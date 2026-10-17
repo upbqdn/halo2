@@ -24,7 +24,9 @@ bitvec = { version = "1", default-features = false }
 blake2b_simd = "1"
 ff = { version = "0.14", default-features = false, features = ["alloc"] }
 group = "0.14"
-pasta_curves = "0.6"
+# Requires a Pasta release with try_multiexp_vartime and multicore; until then,
+# use the local patch and raise this minimum to that release before publication.
+pasta_curves = { version = "0.6", features = ["glv"] }
 rand = { version = "0.10", default-features = false, features = ["sys_rng"] }
 rand_core = { version = "0.10", default-features = false }
 sinsemilla = "0.2"

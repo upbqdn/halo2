@@ -20,6 +20,10 @@ and this project adheres to Rust's notion of
   instance values instead of zero-padding them to the evaluation domain first.
 - `halo2_proofs::arithmetic::best_multiexp` now uses serial window
   accumulation when only one worker is available.
+- Verifier MSM evaluation and public instance commitments try the curve's
+  variable-time MSM hook before the generic signed-Booth implementation. Pasta's
+  GLV backend is enabled, with parallel evaluation controlled by `multicore`.
+  Witness-bearing prover MSMs retain the existing implementation.
 
 ## [0.4.0] - 2026-09-29
 ### Added
