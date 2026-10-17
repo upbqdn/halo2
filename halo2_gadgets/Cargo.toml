@@ -1,0 +1,85 @@
+[package]
+name = "halo2_gadgets"
+version = "0.6.0"
+authors = [
+    "Sean Bowe",
+    "Jack Grigg <jack@zodl.com>",
+    "Daira Emma Hopwood <daira@jacaranda.org>",
+    "Ying Tong Lai",
+    "Kris Nuttycombe <kris@zodl.com>",
+]
+edition.workspace = true
+rust-version.workspace = true
+description = "Reusable gadgets and chip implementations for Halo 2"
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+categories = ["cryptography"]
+keywords = ["halo", "proofs", "zcash", "zkp", "zkSNARKs"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
+
+[dependencies]
+arrayvec.workspace = true
+bitvec.workspace = true
+ff.workspace = true
+group.workspace = true
+halo2_poseidon.workspace = true
+halo2_proofs.workspace = true
+pasta_curves.workspace = true
+proptest = { workspace = true, optional = true }
+rand.workspace = true
+sinsemilla.workspace = true
+subtle.workspace = true
+uint.workspace = true
+
+# Developer tooling dependencies
+plotters = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion.workspace = true
+halo2_poseidon = { workspace = true, features = ["test-dependencies"] }
+halo2_proofs = { workspace = true, features = ["unstable-circuit-fixtures"] }
+proptest.workspace = true
+rand = { workspace = true, features = ["thread_rng"] }
+sinsemilla = { workspace = true, features = ["test-dependencies"] }
+
+[target.'cfg(unix)'.dev-dependencies]
+pprof = { version = "0.15", features = ["criterion", "flamegraph"] }
+
+[lib]
+bench = false
+
+[features]
+test-dev-graph = [
+    "halo2_proofs/dev-graph",
+    "plotters",
+    "plotters/bitmap_backend",
+    "plotters/bitmap_encoder",
+    "plotters/ttf",
+]
+test-dependencies = [
+    "proptest",
+    "sinsemilla/test-dependencies",
+]
+
+# In-development features
+# See https://zcash.github.io/halo2/dev/features.html
+beta = [
+    "halo2_proofs/beta",
+]
+nightly = [
+    "beta",
+    "halo2_proofs/nightly",
+]
+# Add flags for in-development features above this line.
+
+[[bench]]
+name = "primitives"
+harness = false
+
+[[bench]]
+name = "poseidon"
+harness = false

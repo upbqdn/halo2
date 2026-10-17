@@ -1,5 +1,7 @@
 /target
+/halo2_gadgets/*-layout.png
+**/.*.swp
 **/*.rs.bk
-Cargo.lock
 .vscode
-**/*.html
+.DS_Store
+/book/book

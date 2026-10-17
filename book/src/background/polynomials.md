@@ -178,7 +178,7 @@ most points." Formally, it can be written as follows:
 
 > Let $p(x_1, x_2, \cdots, x_n)$ be a nonzero polynomial of $n$ variables with degree $d$.
 > Let $S$ be a finite set of numbers with at least $d$ elements in it. If we choose random
-> $\alpha_1, \alpha_1, \cdots, \alpha_n$ from $S$,
+> $\alpha_1, \alpha_2, \cdots, \alpha_n$ from $S$,
 > $$\text{Pr}[p(\alpha_1, \alpha_2, \cdots, \alpha_n) = 0] \leq \frac{d}{|S|}.$$
 
 In the familiar univariate case $p(X)$, this reduces to saying that a nonzero polynomial
@@ -242,7 +242,7 @@ Now, we can write our polynomial as a linear combination of Lagrange basis funct
 
 $$A(X) = \sum_{i = 0}^{n-1} a_i\mathcal{L_i}(X), X \in \mathcal{H},$$
 
-which is equivalent to saying that $p(X)$ evaluates to $a_0$ at $\omega^0$,
+which is equivalent to saying that $A(X)$ evaluates to $a_0$ at $\omega^0$,
 to $a_1$ at $\omega^1$, to $a_2$ at $\omega^2, \cdots,$ and so on.
 
 When working over a multiplicative subgroup, the Lagrange basis function has a convenient
@@ -279,7 +279,7 @@ we can reconstruct its coefficient form in the Lagrange basis:
 
 $$A(X) = \sum_{i = 0}^{n-1} A(x_i)\mathcal{L_i}(X), $$
 
-where $X \in \{x_0, x_1,\cdots, x_{1-n}\}.$
+where $X \in \{x_0, x_1,\cdots, x_{n-1}\}.$
 
 ## References
 [^master-thm]: [Dasgupta, S., Papadimitriou, C. H., & Vazirani, U. V. (2008). "Algorithms" (ch. 2). New York: McGraw-Hill Higher Education.](https://people.eecs.berkeley.edu/~vazirani/algorithms/chap2.pdf)

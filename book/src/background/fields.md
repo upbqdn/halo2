@@ -11,7 +11,7 @@ numbers $\mathbb{R}$ are an example of a field with uncountably many elements.
 Halo makes use of _finite fields_ which have a finite number of elements. Finite fields
 are fully classified as follows:
 
-- if $\mathbb{F}$ is a finite field, it contains $|\mathbb{F}| = p^k$ elements  for some
+- if $\mathbb{F}$ is a finite field, it contains $|\mathbb{F}| = p^k$ elements for some
   integer $k \geq 1$ and some prime $p$;
 - any two finite fields with the same number of elements are isomorphic. In particular,
   all of the arithmetic in a prime field $\mathbb{F}_p$ is isomorphic to addition and
@@ -38,7 +38,21 @@ Important notes:
 
 Finite fields will be useful later for constructing [polynomials](polynomials.md) and
 [elliptic curves](curves.md). Elliptic curves are examples of groups, which we discuss
-next.
+below.
+
+## The Pasta primes
+
+Apart from the generic usage above, this book uses $p$ and $q$ for the two Pasta primes:
+$p$ is the modulus of the Pallas base field and $q$ is the modulus of the Vesta base
+field, where
+$$
+\begin{aligned}
+p &= 2^{254} + 45560315531419706090280762371685220353, \\
+q &= 2^{254} + 45560315531506369815346746415080538113.
+\end{aligned}
+$$
+Pallas and Vesta form a [cycle of curves](curves.md#cycles-of-curves): the scalar field of
+Pallas is $\mathbb{F}_q$, and the scalar field of Vesta is $\mathbb{F}_p$.
 
 ## Groups
 
@@ -203,7 +217,7 @@ with $S = 32$ and $T$ odd (i.e. $p - 1$ has 32 lower zero-bits). This means they
 multiplicative subgroups of order $2^k$ for all $k \leq 32$. These 2-adic subgroups are
 nice for [efficient FFTs], as well as enabling a wide variety of circuit sizes.
 
-[PLONK-based]: upa.md
+[PLONK-based]: plonkish.md
 [efficient FFTs]: polynomials.md#fast-fourier-transform-fft
 
 ## Square roots
@@ -248,7 +262,7 @@ odd, and so half of all elements are squares.
 In order to compute the square root, we can first raise the element
 $a = \alpha^i \cdot  \beta^j$ to the power $t$ to "kill" the $t$-order component, giving
 
-$$a^t = \alpha^{it \pmod 2^k} \cdot \beta^{jt \pmod t} = \alpha^{it \pmod 2^k}$$
+$$a^t = \alpha^{it \pmod {2^k}} \cdot \beta^{jt \pmod t} = \alpha^{it \pmod {2^k}}$$
 
 and then raise this result to the power $t^{-1} \pmod{2^k}$ to undo the effect of the
 original exponentiation on the $2^k$-order component:
@@ -304,4 +318,4 @@ Important notes:
   of unity). There is a two-to-one mapping between the elements and their squares.
 
 ## References
-[^chinese-remainder]: [Friedman, R. (n.d.) "Cyclic Groups and Elementary Number Theory II" (p. 5).](http://www.math.columbia.edu/~rf/numbertheory2.pdf)
+[^chinese-remainder]: [Friedman, R. (n.d.) "Cyclic Groups and Elementary Number Theory II" (p. 5).](https://web.archive.org/web/20240413230732/http://www.math.columbia.edu/~rf/numbertheory2.pdf)

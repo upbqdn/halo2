@@ -5,20 +5,29 @@ on: pull_request
 
 jobs:
   clippy:
-    name: Clippy (1.51.0)
+    name: Clippy (MSRV)
     timeout-minutes: 30
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # check out the (private) repository
+      checks: write # post Clippy annotations as a check run
 
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          toolchain: 1.51.0
-          components: clippy
-          override: true
+          persist-credentials: false
+      - id: prepare
+        uses: ./.github/actions/prepare
+        with:
+          nightly-features: true
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Run clippy
-        uses: actions-rs/clippy-check@v1
+        uses: auguwu/clippy-action@9817d076b82df0194935be9db6154c56ac07b317 # 1.5.0
         with:
-          name: Clippy (1.51.0)
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features --all-targets -- -D warnings
+          # cargo-level flags go in `check-args` (before the `--`); lint levels
+          # go in `deny`/`warn` (the action places them after the `--`).
+          check-args: >
+            ${{ steps.prepare.outputs.feature-flags }}
+            --all-targets
+          deny: warnings

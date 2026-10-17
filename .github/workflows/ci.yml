@@ -1,28 +1,94 @@
 name: CI checks
 
-on: [push, pull_request]
+on:
+  pull_request:
+  push:
+    branches: main
+
+permissions:
+  contents: read # required to check out the private repository
 
 jobs:
   test:
-    name: Test on ${{ matrix.os }}
+    name: Test on ${{ matrix.os }}${{ matrix.name_suffix }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        # We don't need to test across multiple platforms yet
-        # os: [ubuntu-latest, windows-latest, macOS-latest]
-        os: [ubuntu-latest]
+        stage: [stable, beta, nightly]
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+        include:
+          - stage: beta
+            name_suffix: " with beta features"
+            extra_flags: --features beta
+          - stage: nightly
+            name_suffix: " with nightly features"
+            extra_flags: --features nightly
 
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          toolchain: 1.51.0
-          override: true
+          persist-credentials: false
+      - id: prepare
+        uses: ./.github/actions/prepare
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ${{ matrix.stage }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Run tests
-        uses: actions-rs/cargo@v1
+        env:
+          FEATURE_FLAGS: ${{ steps.prepare.outputs.feature-flags }}
+        run: >
+          cargo test
+          --verbose
+          --release
+          --workspace
+          $FEATURE_FLAGS
+          ${{ matrix.extra_flags }}
+      - name: Verify working directory is clean
+        run: git diff --exit-code
+
+  test-32-bit:
+    name: Test on i686-unknown-linux-gnu${{ matrix.name_suffix }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        stage: [stable, beta, nightly]
+        include:
+          - stage: beta
+            name_suffix: " with beta features"
+          - stage: nightly
+            name_suffix: " with nightly features"
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          command: test
-          args: --verbose --release --all --all-features
+          persist-credentials: false
+      - id: prepare
+        uses: ./.github/actions/prepare
+        with:
+          beta-features: ${{ matrix.stage == 'beta' }}
+          nightly-features: ${{ matrix.stage == 'nightly' }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ${{ matrix.stage }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install cross-platform support dependencies
+        # `apt-get update` first: the runner image ships a package index that goes stale when the
+        # image rolls, after which `install` cannot resolve `gcc-multilib`. That is what broke every
+        # `i686-unknown-linux-gnu` job from the 2026-07-30 image onward, before any Rust was built.
+        run: sudo apt-get update && sudo apt-get install -y gcc-multilib
+      - run: rustup target add i686-unknown-linux-gnu
+      - name: Run tests
+        env:
+          FEATURE_FLAGS: ${{ steps.prepare.outputs.feature-flags }}
+        run: >
+          cargo test
+          --verbose
+          --release
+          --workspace
+          --target i686-unknown-linux-gnu
+          $FEATURE_FLAGS
 
   build:
     name: Build target ${{ matrix.target }}
@@ -31,120 +97,145 @@ jobs:
       matrix:
         target:
           - wasm32-unknown-unknown
-          - wasm32-wasi
+          - wasm32-wasip1
 
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          toolchain: 1.51.0
-          override: true
+          persist-credentials: false
+      - id: prepare
+        uses: ./.github/actions/prepare
+        with:
+          nightly-features: true
+          test-dependencies: false
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Add target
         run: rustup target add ${{ matrix.target }}
+      # We depend on `rand/sys-rng`, which means we need to enable `getrandom/wasm_js`.
+      - name: Enable getrandom/wasm_js
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: cargo add -p halo2_proofs --features wasm_js getrandom
       - name: cargo build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --all-features
+        env:
+          FEATURE_FLAGS: ${{ steps.prepare.outputs.feature-flags }}
+        run: >
+          cargo build
+          $FEATURE_FLAGS
+          --target ${{ matrix.target }}
 
   bitrot:
     name: Bitrot check
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          toolchain: 1.51.0
-          override: true
-      # Build benchmarks to prevent bitrot
+          persist-credentials: false
+      - uses: ./.github/actions/prepare
+      # Check bitrot with stable (as we don't need benchmarks or the test-dev-graph
+      # feature flag to work with MSRV).
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master HEAD 2026-05-31
+        id: toolchain
+        with:
+          toolchain: stable
+      - run: rustup override set "${TOOLCHAIN}"
+        shell: sh
+        env:
+          TOOLCHAIN: ${{steps.toolchain.outputs.name}}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: sudo apt update && sudo apt -y install libfontconfig1-dev
+      # Build benchmarks and all-features to prevent bitrot
       - name: Build benchmarks
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --benches --examples --all-features
+        run: cargo build --benches --examples --all-features
 
   book:
     name: Book tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          toolchain: 1.51.0
-          override: true
+          persist-credentials: false
+      - uses: ./.github/actions/prepare
+      # Build with stable so the .rmeta files match what mdBook expects.
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master HEAD 2026-05-31
+        id: toolchain
+        with:
+          toolchain: stable
+      - run: rustup override set "${TOOLCHAIN}"
+        shell: sh
+        env:
+          TOOLCHAIN: ${{steps.toolchain.outputs.name}}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: cargo build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
+        run: cargo build
       - name: Setup mdBook
-        uses: peaceiris/actions-mdbook@v1
+        uses: peaceiris/actions-mdbook@ee69d230fe19748b7abf22df32acaa93833fad08 # v2.0.0
         with:
-          mdbook-version: '0.4.5'
+          mdbook-version: '0.5.1'
       - name: Test halo2 book
         run: mdbook test -L target/debug/deps book/
 
   codecov:
     name: Code coverage
     runs-on: ubuntu-latest
-
+    container:
+      image: xd009642/tarpaulin:develop-nightly
+      options: --security-opt seccomp=unconfined
     steps:
-      - uses: actions/checkout@v2
-      # Use stable for this to ensure that cargo-tarpaulin can be built.
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          toolchain: stable
-          override: true
-      - name: Install cargo-tarpaulin
-        uses: actions-rs/cargo@v1
+          persist-credentials: false
+      - id: prepare
+        uses: ./.github/actions/prepare
         with:
-          command: install
-          args: cargo-tarpaulin
+          nightly-features: true
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Extend the timeout to 3600 to ensure the code coverage test pass
       - name: Generate coverage report
-        uses: actions-rs/cargo@v1
-        with:
-          command: tarpaulin
-          args: --all-features --timeout 600 --out Xml
+        env:
+          FEATURE_FLAGS: ${{ steps.prepare.outputs.feature-flags }}
+        run: >
+          cargo tarpaulin
+          --engine llvm
+          $FEATURE_FLAGS
+          --timeout 3600
+          --out xml
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v1
-        with:
-          token: ${{secrets.CODECOV_TOKEN}}
+        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6.0.1
 
   doc-links:
     name: Intra-doc links
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          toolchain: 1.51.0
-          override: true
-      - name: cargo fetch
-        uses: actions-rs/cargo@v1
+          persist-credentials: false
+      - uses: ./.github/actions/prepare
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          command: fetch
-
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: sudo apt update && sudo apt -y install libfontconfig1-dev
+      - run: cargo fetch
       # Ensure intra-documentation links all resolve correctly
       # Requires #![deny(intra_doc_link_resolution_failure)] in crates.
       - name: Check intra-doc links
-        uses: actions-rs/cargo@v1
-        with:
-          command: doc
-          args: --all --document-private-items
+        run: cargo doc --all --all-features --document-private-items
 
   fmt:
     name: Rustfmt
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          toolchain: 1.51.0
-          override: true
-      - run: rustup component add rustfmt
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+          persist-credentials: false
+      - uses: ./.github/actions/prepare
+      - run: cargo fmt --all -- --check

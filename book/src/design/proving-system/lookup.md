@@ -1,11 +1,11 @@
 # Lookup argument
 
-halo2 uses the following lookup technique, which allows for lookups in arbitrary sets, and
+Halo 2 uses the following lookup technique, which allows for lookups in arbitrary sets, and
 is arguably simpler than Plookup.
 
 ## Note on Language
 
-In addition to the [general notes on language](../design.md#note-on-language):
+In addition to the [general notes on language](../../design.md#note-on-language):
 
 - We call the $Z(X)$ polynomial (the grand product argument polynomial for the permutation
   argument) the "permutation product" column.
@@ -119,7 +119,7 @@ Since we can no longer rely on the wraparound to ensure that the product $Z$ bec
 again at $\omega^{2^k},$ we would instead need to constrain $Z(\omega^u)$ to $1.$ However,
 there is a potential difficulty: if any of the values $A_i + \beta$ or $S_i + \gamma$ are
 zero for $i \in [0, u),$ then it might not be possible to satisfy the permutation argument.
-This occurs with negligble probability over choices of $\beta$ and $\gamma,$ but is an
+This occurs with negligible probability over choices of $\beta$ and $\gamma,$ but is an
 obstacle to achieving *perfect* zero knowledge (because an adversary can rule out witnesses
 that would cause this situation), as well as perfect completeness.
 
@@ -147,7 +147,7 @@ soundness is not affected.
 
 ## Generalizations
 
-halo2's lookup argument implementation generalizes the above technique in the following
+Halo 2's lookup argument implementation generalizes the above technique in the following
 ways:
 
 - $A$ and $S$ can be extended to multiple columns, combined using a random challenge. $A'$
