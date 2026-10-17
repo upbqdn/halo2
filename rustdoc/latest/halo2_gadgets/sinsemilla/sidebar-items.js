@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["chip","merkle"],"struct":["CommitDomain","HashDomain","Message","MessagePiece"],"trait":["CommitDomains","HashDomains","SinsemillaInstructions"]};

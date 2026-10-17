@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["create_proof","verify_proof"],"struct":["ProverQuery","VerifierQuery"]};
