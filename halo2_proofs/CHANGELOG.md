@@ -7,6 +7,9 @@ and this project adheres to Rust's notion of
 
 ## [Unreleased]
 ### Changed
+- Verifying keys share a compiled gate-expression plan across clones. Verification
+  evaluates fixed-only subexpressions once per proof without changing the pinned
+  key, transcript, or constraint fold order.
 - `halo2_proofs::arithmetic::best_multiexp` now uses signed Booth recoding to
   reduce its Pippenger bucket count. It computes each scalar's canonical
   representation once per MSM rather than once per window, and derives its
