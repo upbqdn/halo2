@@ -2,10 +2,12 @@ use super::Params;
 use crate::arithmetic::{best_multiexp_public, CurveAffine};
 use ff::{Field, PrimeField};
 use group::Group;
+use pasta_curves::arithmetic::CurveExt;
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt;
+
 
 #[derive(Clone, Copy)]
 struct CanonicalFieldKey<F: PrimeField> {
@@ -283,7 +285,8 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
 
         assert_eq!(scalars.len(), len);
 
-        bool::from(best_multiexp_public(&scalars, &bases).is_identity())
+        C::Curve::try_multiexp_full_width_is_identity_vartime(&scalars, &bases)
+            .unwrap_or_else(|| bool::from(best_multiexp_public(&scalars, &bases).is_identity()))
     }
 
     /// Exposes the same terms evaluated by [`Self::eval`], with buffered batch
