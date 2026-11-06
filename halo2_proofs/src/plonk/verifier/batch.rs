@@ -9,12 +9,13 @@ use std::sync::Arc;
 
 use super::{validate_instances, verify_proof_with_instance_commitments, VerificationStrategy};
 use crate::{
+    instance_flag_mask,
     multicore::{IntoParallelIterator, TryFoldAndReduce},
     plonk::{Error, VerifyingKey},
     poly::commitment::{Guard, Params, MSM},
     transcript::{EncodedChallenge, PrefetchedBlake2bRead},
-    instance_flag_mask, INSTANCE_WINDOW_BITS, INSTANCE_WINDOW_ENTRIES_PER_BASE,
-    MAX_CACHED_INSTANCE_ROWS, PREPARED_INSTANCE_DENSE_ROWS,
+    INSTANCE_WINDOW_BITS, INSTANCE_WINDOW_ENTRIES_PER_BASE, MAX_CACHED_INSTANCE_ROWS,
+    PREPARED_INSTANCE_DENSE_ROWS,
 };
 
 #[cfg(feature = "multicore")]
@@ -384,7 +385,10 @@ fn prefetch_points<C: CurveAffine>(
             })
         })
         .unzip();
-    offsets.into_iter().zip(C::batch_decode(&encodings)).collect()
+    offsets
+        .into_iter()
+        .zip(C::batch_decode(&encodings))
+        .collect()
 }
 
 /// A verifier that checks multiple proofs in a batch. **This requires the

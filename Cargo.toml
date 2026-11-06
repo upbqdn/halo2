@@ -54,3 +54,6 @@ assert_matches = "1.5"
 criterion = "0.5"
 gumdrop = "0.8"
 proptest = "1"
+
+[patch.crates-io]
+pasta_curves = { git = "https://github.com/upbqdn/pasta_curves", rev = "e97df3240588990f5a5dff11f632a31125ac72b9" }

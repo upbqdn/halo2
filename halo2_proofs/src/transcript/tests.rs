@@ -8,8 +8,12 @@ type Plain<'a> = Blake2bRead<&'a [u8], C, Challenge255<C>>;
 fn proof(runs: usize) -> Vec<u8> {
     let mut writer = Blake2bWrite::<_, C, Challenge255<C>>::init(Vec::new());
     for _ in 0..runs {
-        writer.write_point(vesta::Point::generator().to_affine()).unwrap();
-        writer.write_point((vesta::Point::generator().double()).to_affine()).unwrap();
+        writer
+            .write_point(vesta::Point::generator().to_affine())
+            .unwrap();
+        writer
+            .write_point((vesta::Point::generator().double()).to_affine())
+            .unwrap();
         writer.write_scalar(vesta::Scalar::from(7)).unwrap();
     }
     writer.finalize()
@@ -42,7 +46,10 @@ fn exercise(bytes: &[u8], runs: usize, prefetched: Option<Vec<(usize, Option<C>)
             assert_eq!(a.to_string(), b.to_string());
             return;
         }
-        assert_eq!(plain.squeeze_challenge().get_scalar(), fast.squeeze_challenge().get_scalar());
+        assert_eq!(
+            plain.squeeze_challenge().get_scalar(),
+            fast.squeeze_challenge().get_scalar()
+        );
     }
 }
 
@@ -51,22 +58,27 @@ fn prefetched_and_recorded_transcripts_match_scalar_reads_and_errors() {
     let bytes = proof(3);
     for end in 0..=bytes.len() {
         let bytes = &bytes[..end];
-        let points = (0..3).flat_map(|run| [run * 96, run * 96 + 32])
+        let points = (0..3)
+            .flat_map(|run| [run * 96, run * 96 + 32])
             .filter_map(|offset| {
                 let encoding = bytes.get(offset..offset + 32)?;
                 let encoding: [u8; 32] = encoding.try_into().unwrap();
                 Some((offset, C::from_bytes(&encoding).into()))
-            }).collect();
+            })
+            .collect();
         exercise(bytes, 3, Some(points));
         exercise(bytes, 3, None);
     }
     for offset in [0, 32, 64, 96] {
         let mut malformed = bytes.clone();
         malformed[offset..offset + 32].fill(255);
-        let points = [0, 32, 96, 128, 192, 224].into_iter().map(|offset| {
-            let encoding: [u8; 32] = malformed[offset..offset + 32].try_into().unwrap();
-            (offset, C::from_bytes(&encoding).into())
-        }).collect();
+        let points = [0, 32, 96, 128, 192, 224]
+            .into_iter()
+            .map(|offset| {
+                let encoding: [u8; 32] = malformed[offset..offset + 32].try_into().unwrap();
+                (offset, C::from_bytes(&encoding).into())
+            })
+            .collect();
         exercise(&malformed, 3, Some(points));
     }
 }
@@ -85,7 +97,10 @@ fn recording_and_shape_caches_remain_bounded() {
         let ranges = recording.into_recorded();
         assert_eq!(ranges.is_some(), runs == limit);
         if let Some(ranges) = ranges {
-            assert_eq!(ranges, (0..runs).map(|i| i * 96..i * 96 + 64).collect::<Vec<_>>());
+            assert_eq!(
+                ranges,
+                (0..runs).map(|i| i * 96..i * 96 + 64).collect::<Vec<_>>()
+            );
         }
     }
     let layouts = crate::plonk::ProofPointLayouts::default();

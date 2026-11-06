@@ -320,7 +320,13 @@ fn prepared_instance_commitments_match_original_arithmetic() {
                 if exceptional {
                     let p = params.g_lagrange[0];
                     params.g_lagrange[..7].copy_from_slice(&[
-                        <$curve>::identity(), p, -p, p, p, -p, <$curve>::identity(),
+                        <$curve>::identity(),
+                        p,
+                        -p,
+                        p,
+                        p,
+                        -p,
+                        <$curve>::identity(),
                     ]);
                     params.w = <$curve>::identity();
                 }
@@ -346,7 +352,8 @@ fn prepared_instance_commitments_match_original_arithmetic() {
                     })
                     .collect::<Vec<_>>();
                 let slices = instances.iter().map(Vec::as_slice).collect::<Vec<_>>();
-                let ordinary = InstanceFixedWindowTable::new(&params, crate::PREPARED_INSTANCE_ROWS);
+                let ordinary =
+                    InstanceFixedWindowTable::new(&params, crate::PREPARED_INSTANCE_ROWS);
                 let domain = EvaluationDomain::new(1, 4);
                 for count in [1, 2, 3, 8, 17, instances.len()] {
                     let prepared = commit_glv_instances(&params, &slices[..count]).unwrap();
@@ -355,14 +362,19 @@ fn prepared_instance_commitments_match_original_arithmetic() {
                         let original = instance
                             .iter()
                             .zip(&params.g_lagrange)
-                            .fold(params.w.to_curve(), |sum, (scalar, base)| sum + *base * scalar);
+                            .fold(params.w.to_curve(), |sum, (scalar, base)| {
+                                sum + *base * scalar
+                            });
                         assert_eq!(commitment, original);
                         assert_eq!(commitment, params.commit_lagrange_instance(instance));
                         let mut padded = domain.empty_lagrange();
                         for (coefficient, value) in padded.iter_mut().zip(instance) {
                             *coefficient = *value;
                         }
-                        assert_eq!(commitment, params.commit_lagrange(&padded, Blind::default()));
+                        assert_eq!(
+                            commitment,
+                            params.commit_lagrange(&padded, Blind::default())
+                        );
                     }
                 }
                 assert!(commit_glv_instances(&params, &[]).is_none());
@@ -409,7 +421,9 @@ fn prepared_and_fallback_batch_commitments_preserve_values() {
                 let original = column
                     .iter()
                     .zip(&params.g_lagrange)
-                    .fold(params.w.to_curve(), |sum, (scalar, base)| sum + *base * scalar);
+                    .fold(params.w.to_curve(), |sum, (scalar, base)| {
+                        sum + *base * scalar
+                    });
                 assert_eq!(*commitment, original.to_affine());
             }
         }

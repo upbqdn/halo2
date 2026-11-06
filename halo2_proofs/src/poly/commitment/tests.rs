@@ -83,11 +83,17 @@ fn glv_instance_cache_is_shared_and_does_not_change_params() {
     });
     assert!(tables.iter().all(|table| Arc::ptr_eq(&tables[0], table)));
     let cloned = params.as_ref().clone();
-    assert!(Arc::ptr_eq(&tables[0], &cloned.glv_instance_table().unwrap()));
+    assert!(Arc::ptr_eq(
+        &tables[0],
+        &cloned.glv_instance_table().unwrap()
+    ));
     assert_eq!(format!("{params:?}"), debug_before);
     let mut serialized_after = vec![];
     params.write(&mut serialized_after).unwrap();
     assert_eq!(serialized_before, serialized_after);
     let decoded = Params::<EqAffine>::read(&mut serialized_before.as_slice()).unwrap();
-    assert!(!Arc::ptr_eq(&tables[0], &decoded.glv_instance_table().unwrap()));
+    assert!(!Arc::ptr_eq(
+        &tables[0],
+        &decoded.glv_instance_table().unwrap()
+    ));
 }
