@@ -12,7 +12,7 @@ use crate::{
     multicore::{IntoParallelIterator, TryFoldAndReduce},
     plonk::{Error, VerifyingKey},
     poly::commitment::{Guard, Params, MSM},
-    transcript::{Blake2bRead, EncodedChallenge},
+    transcript::{EncodedChallenge, PrefetchedBlake2bRead},
     INSTANCE_WINDOW_BITS, INSTANCE_WINDOW_ENTRIES_PER_BASE, MAX_CACHED_INSTANCE_ROWS,
 };
 
@@ -317,6 +317,32 @@ fn compute_batch_instance_commitments<C: CurveAffine>(
     Ok(commitments)
 }
 
+/// Decodes known point runs without changing transcript reads or truncation errors.
+fn prefetch_points<C: CurveAffine>(
+    proof: &[u8],
+    ranges: &[std::ops::Range<usize>],
+) -> Vec<(usize, Option<C>)> {
+    let len = C::Repr::default().as_ref().len();
+    if len == 0 {
+        return Vec::new();
+    }
+    let (offsets, encodings): (Vec<usize>, Vec<C::Repr>) = ranges
+        .iter()
+        .filter_map(|range| {
+            let bytes = proof.get(range.start..range.end.min(proof.len()))?;
+            Some((range.start, bytes))
+        })
+        .flat_map(|(start, bytes)| {
+            bytes.chunks_exact(len).enumerate().map(move |(i, bytes)| {
+                let mut repr = C::Repr::default();
+                repr.as_mut().copy_from_slice(bytes);
+                (start + i * len, repr)
+            })
+        })
+        .unzip();
+    offsets.into_iter().zip(C::batch_decode(&encodings)).collect()
+}
+
 /// A verifier that checks multiple proofs in a batch. **This requires the
 /// `batch` crate feature to be enabled.**
 #[derive(Debug, Default)]
@@ -378,15 +404,28 @@ where
                     C::Scalar::random(&mut UnwrapErr(SysRng))
                 };
                 let strategy = BatchStrategy::new(params, rho);
-                let mut transcript = Blake2bRead::init(&item.proof[..]);
-                verify_proof_with_instance_commitments(
+                let layouts = vk.proof_point_layouts();
+                let circuits = item.instances.len();
+                let mut transcript = match layouts.get(circuits) {
+                    Some(ranges) => PrefetchedBlake2bRead::with_prefetched(
+                        &item.proof,
+                        prefetch_points(&item.proof, &ranges),
+                    ),
+                    None => PrefetchedBlake2bRead::recording(&item.proof),
+                };
+                let result = verify_proof_with_instance_commitments(
                     params,
                     vk,
                     strategy,
                     instance_commitments,
                     &mut transcript,
-                )
-                .map_err(|e| {
+                );
+                if result.is_ok() {
+                    if let Some(ranges) = transcript.into_recorded() {
+                        layouts.insert(circuits, ranges);
+                    }
+                }
+                result.map_err(|e| {
                     tracing::debug!("Batch item {} failed verification: {}", i, e);
                     e
                 })

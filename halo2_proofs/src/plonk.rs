@@ -313,6 +313,9 @@ pub struct VerifyingKey<C: CurveAffine> {
     transcript_repr: C::Scalar,
     /// Shared pure-field gate schedule; not part of [`Self::pinned`].
     verifier_expressions: Arc<VerifierExpressions<C::Scalar>>,
+    /// Bounded public proof layouts, shared by clones and excluded from the pinned key.
+    #[cfg(feature = "batch")]
+    proof_point_layouts: Arc<ProofPointLayouts>,
 }
 
 impl<C: CurveAffine> VerifyingKey<C>
@@ -340,6 +343,8 @@ where
             // Temporary, this is not pinned.
             transcript_repr: C::Scalar::ZERO,
             verifier_expressions,
+            #[cfg(feature = "batch")]
+            proof_point_layouts: Arc::default(),
         };
 
         let mut hasher = Blake2bParams::new()
@@ -443,3 +448,95 @@ type ChallengeY<F> = ChallengeScalar<F, Y>;
 #[derive(Clone, Copy, Debug)]
 struct X;
 type ChallengeX<F> = ChallengeScalar<F, X>;
+
+/// The byte ranges of a proof's point runs, by the number of circuit instances
+/// the proof covers.
+///
+/// A proof's sequence of point and scalar reads is fixed by the verifying key
+/// and its circuit-instance count, so the runs recorded while one proof of
+/// a shape is read completely hold for every proof of that shape, valid or
+/// not (validity is decided later, by the batch's final check). The batch
+/// verifier uses them to decode a proof's points together before reading it;
+/// a wrong layout would only cost speed, since a point read at an offset that
+/// was not decoded ahead decodes as usual.
+#[cfg(feature = "batch")]
+#[derive(Debug, Default)]
+pub(crate) struct ProofPointLayouts(std::sync::Mutex<ProofPointLayoutCache>);
+
+/// Fixed slots replaced in insertion order, so early shapes cannot pin the
+/// cache for the verifying key's lifetime.
+#[cfg(feature = "batch")]
+#[derive(Debug)]
+struct ProofPointLayoutCache {
+    layouts: [Option<ProofPointLayout>; ProofPointLayouts::MAX_SHAPES],
+    next: usize,
+}
+
+#[cfg(feature = "batch")]
+#[derive(Debug)]
+struct ProofPointLayout {
+    circuits: usize,
+    ranges: Arc<[std::ops::Range<usize>]>,
+}
+
+#[cfg(feature = "batch")]
+impl Default for ProofPointLayoutCache {
+    fn default() -> Self {
+        Self {
+            layouts: [const { None }; ProofPointLayouts::MAX_SHAPES],
+            next: 0,
+        }
+    }
+}
+
+#[cfg(feature = "batch")]
+impl<C: CurveAffine> VerifyingKey<C> {
+    pub(crate) fn proof_point_layouts(&self) -> &ProofPointLayouts {
+        &self.proof_point_layouts
+    }
+}
+
+#[cfg(feature = "batch")]
+impl ProofPointLayouts {
+    /// At most this many shapes are kept; each has at most
+    /// [`crate::MAX_CACHED_PROOF_POINT_RUNS`] runs. Orchard proofs differ only
+    /// in their action count.
+    const MAX_SHAPES: usize = 256;
+
+    pub(crate) fn get(&self, circuits: usize) -> Option<Arc<[std::ops::Range<usize>]>> {
+        let layouts = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        layouts
+            .layouts
+            .iter()
+            .flatten()
+            .find(|layout| layout.circuits == circuits)
+            .map(|layout| Arc::clone(&layout.ranges))
+    }
+
+    pub(crate) fn insert(&self, circuits: usize, ranges: Vec<std::ops::Range<usize>>) {
+        if ranges.len() > crate::MAX_CACHED_PROOF_POINT_RUNS {
+            return;
+        }
+        let mut layouts = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if layouts
+            .layouts
+            .iter()
+            .flatten()
+            .any(|layout| layout.circuits == circuits)
+        {
+            return;
+        }
+        let next = layouts.next;
+        layouts.layouts[next] = Some(ProofPointLayout {
+            circuits,
+            ranges: ranges.into(),
+        });
+        layouts.next = (next + 1) % Self::MAX_SHAPES;
+    }
+}

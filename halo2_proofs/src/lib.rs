@@ -28,3 +28,7 @@ const INSTANCE_WINDOW_ENTRIES_PER_BASE: usize = 1 << (INSTANCE_WINDOW_BITS - 1);
 // one MiB while covering Orchard's ten-row instance columns.
 #[cfg(feature = "batch")]
 const MAX_CACHED_INSTANCE_ROWS: usize = 64;
+
+// Bound each learned proof layout independently of attacker-chosen circuit counts.
+#[cfg(feature = "batch")]
+const MAX_CACHED_PROOF_POINT_RUNS: usize = 32;
