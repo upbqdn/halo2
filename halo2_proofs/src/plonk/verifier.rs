@@ -1,3 +1,6 @@
+// Portions copyright (c) The Zakura Contributors, licensed under the MIT license or
+// the Apache License, Version 2.0, at your option.
+
 use ff::Field;
 use pasta_curves::arithmetic::CurveExt;
 use std::iter;
@@ -66,6 +69,7 @@ impl<'params, C: CurveAffine> VerificationStrategy<'params, C> for SingleVerifie
     }
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 fn validate_instances<C: CurveAffine, I: AsRef<[S]>, S: AsRef<[C::Scalar]>>(
     params: &Params<C>,
     vk: &VerifyingKey<C>,
@@ -140,6 +144,7 @@ fn compute_instance_commitments<C: CurveAffine>(
     }
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 /// Returns a boolean indicating whether or not the proof is valid
 pub fn verify_proof<
     'params,
@@ -159,6 +164,7 @@ pub fn verify_proof<
     verify_proof_with_instance_commitments(params, vk, strategy, instance_commitments, transcript)
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 // The callers validate instance shapes before computing these commitments.
 // Their nested order is the transcript's circuit/column order.
 fn verify_proof_with_instance_commitments<

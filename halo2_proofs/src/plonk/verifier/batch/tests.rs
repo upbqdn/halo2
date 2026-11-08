@@ -1,3 +1,7 @@
+// Portions copyright (c) The Zakura Contributors, licensed under the MIT license or
+// the Apache License, Version 2.0, at your option.
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
+
 use ff::{Field, FromUniformBytes};
 use group::CurveAffine as _;
 use pasta_curves::{EpAffine, EqAffine, Fp, Fq};
@@ -176,6 +180,7 @@ fn fixed_window_instance_commitments_handle_exceptional_points() {
     check_curve!(EpAffine, Fq);
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/684).
 #[test]
 fn parallel_instance_commitments_match_serial_batches() {
     macro_rules! check_curve {

@@ -1,3 +1,6 @@
+// Portions copyright (c) The Zakura Contributors, licensed under the MIT license or
+// the Apache License, Version 2.0, at your option.
+
 use group::{
     ff::{Field, FromUniformBytes, PrimeField},
     Group,
@@ -58,16 +61,19 @@ struct BatchItem<C: CurveAffine> {
     proof: Vec<u8>,
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 const SERIAL_INSTANCE_WINDOW_BITS: usize = 8;
 // Lockstep bookkeeping pays off with three or more instance columns.
 const MIN_LOCKSTEP_INSTANCE_COLUMNS: usize = 3;
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 // All scalars and points handled by this table are public instance data.
 struct InstanceFixedWindowTable<C: CurveAffine> {
     base_count: usize,
     multiples: Arc<Vec<C>>,
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 impl<C: CurveAffine> InstanceFixedWindowTable<C> {
     fn new(params: &Params<C>, base_count: usize) -> Self {
         Self {
@@ -108,6 +114,7 @@ impl<C: CurveAffine> InstanceFixedWindowTable<C> {
         C::Curve::from(params.w) + variable
     }
 
+    // Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/684).
     #[inline(never)]
     fn commit_batch_parallel(
         &self,
@@ -213,18 +220,21 @@ impl<C: CurveAffine> InstanceFixedWindowTable<C> {
     }
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 #[derive(Clone, Copy)]
 struct FixedWindowDigit {
     magnitude: usize,
     negative: bool,
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 fn signed_instance_window_count(scalar_bits: usize) -> usize {
     // A full high window can carry into one more window. A partial high
     // window cannot carry, so it already occupies this final slot.
     scalar_bits / INSTANCE_WINDOW_BITS + 1
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 fn unsigned_fixed_window_digit(bytes: &[u8], window: usize, window_bits: usize) -> usize {
     let bit_start = window * window_bits;
     // A byte has eight bits, which fits usize on every supported target.
@@ -237,6 +247,7 @@ fn unsigned_fixed_window_digit(bytes: &[u8], window: usize, window_bits: usize) 
     usize::from((encoded >> bit_offset) & ((1 << window_bits) - 1))
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 fn signed_fixed_window_digit(bytes: &[u8], window: usize, window_bits: usize) -> FixedWindowDigit {
     let bit_start = window * window_bits;
     let radix = 1usize << window_bits;
@@ -268,6 +279,8 @@ fn signed_fixed_window_digit(bytes: &[u8], window: usize, window_bits: usize) ->
     }
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/684).
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 fn compute_batch_instance_commitments<C: CurveAffine>(
     params: &Params<C>,
     vk: &VerifyingKey<C>,
@@ -340,6 +353,7 @@ impl<C: CurveAffine> BatchVerifier<C>
 where
     C::Scalar: FromUniformBytes<64>,
 {
+    // Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
     /// Finalizes the batch and checks its validity.
     ///
     /// Returns `false` if *some* proof was invalid. If the caller needs to identify

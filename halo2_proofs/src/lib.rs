@@ -1,3 +1,6 @@
+// Portions copyright (c) The Zakura Contributors, licensed under the MIT license or
+// the Apache License, Version 2.0, at your option.
+
 //! # halo2_proofs
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -19,6 +22,7 @@ pub mod transcript;
 pub mod dev;
 mod helpers;
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 // Signed width nine needs one more cached multiple than unsigned width eight.
 #[cfg(feature = "batch")]
 const INSTANCE_WINDOW_BITS: usize = 9;

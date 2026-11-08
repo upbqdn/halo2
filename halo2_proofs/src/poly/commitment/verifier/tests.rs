@@ -1,3 +1,7 @@
+// Portions copyright (c) The Zakura Contributors, licensed under the MIT license or
+// the Apache License, Version 2.0, at your option.
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/517).
+
 use super::*;
 use crate::transcript::Challenge255;
 use ff::FromUniformBytes;
