@@ -1,3 +1,6 @@
+// Portions copyright (c) The Zakura Contributors, licensed under the MIT license or
+// the Apache License, Version 2.0, at your option.
+
 use super::Params;
 use crate::arithmetic::{best_multiexp, CurveAffine};
 use ff::{Field, PrimeField};
@@ -7,6 +10,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt;
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/517).
 #[derive(Clone, Copy)]
 struct CanonicalFieldKey<F: PrimeField> {
     value: F,
@@ -63,6 +67,7 @@ type OtherTerms<C> = BTreeMap<
     (<C as CurveAffine>::ScalarExt, <C as CurveAffine>::Base),
 >;
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/517).
 fn canonicalize_other<C: CurveAffine>(terms: &mut Vec<ArbitraryTerm<C>>) {
     // Stable sorting preserves the first encountered orientation. Coalesce
     // in place, negating scalars when equal x coordinates have opposite y.
@@ -81,6 +86,7 @@ fn canonicalize_other<C: CurveAffine>(terms: &mut Vec<ArbitraryTerm<C>>) {
     });
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/517).
 /// A multiscalar multiplication in the polynomial commitment scheme
 #[derive(Debug, Clone)]
 pub struct MSM<'a, C: CurveAffine> {
@@ -94,6 +100,7 @@ pub struct MSM<'a, C: CurveAffine> {
     batched_other: Vec<ArbitraryTerm<C>>,
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/517).
 impl<'a, C: CurveAffine> MSM<'a, C> {
     /// Create a new, empty MSM using the provided parameters.
     pub fn new(params: &'a Params<C>) -> Self {
@@ -199,6 +206,7 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
         }
     }
 
+    // Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/517).
     /// Retains the owned coefficient allocation when there are no existing
     /// generator terms. The length must be exactly `params.n`.
     pub(super) fn add_owned_g_scalars(&mut self, scalars: Vec<C::Scalar>) {

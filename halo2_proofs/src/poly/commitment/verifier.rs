@@ -1,3 +1,6 @@
+// Portions copyright (c) The Zakura Contributors, licensed under the MIT license or
+// the Apache License, Version 2.0, at your option.
+
 use group::ff::Field;
 #[cfg(any(test, feature = "batch"))]
 use pasta_curves::arithmetic::VartimeField;
@@ -9,6 +12,7 @@ use crate::transcript::{EncodedChallenge, TranscriptRead};
 
 use crate::arithmetic::{best_multiexp, CurveAffine};
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/517).
 /// A guard returned by the verifier
 #[derive(Debug, Clone)]
 pub struct Guard<'a, C: CurveAffine, E: EncodedChallenge<C>> {
@@ -31,6 +35,7 @@ pub struct Accumulator<C: CurveAffine, E: EncodedChallenge<C>> {
     pub u_packed: Vec<E>,
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/517).
 impl<'a, C: CurveAffine, E: EncodedChallenge<C>> Guard<'a, C, E> {
     /// Lets caller supply the challenges and obtain an MSM with updated
     /// scalars and points.
@@ -92,6 +97,7 @@ impl<'a, C: CurveAffine, E: EncodedChallenge<C>> Guard<'a, C, E> {
     }
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/517).
 /// Checks to see if the proof represented within `transcript` is valid, and a
 /// point `x` that the polynomial commitment `P` opens purportedly to the value
 /// `v`. The provided `msm` should evaluate to the commitment `P` being opened.
@@ -174,6 +180,7 @@ fn compute_b<F: Field>(x: F, u: &[F]) -> F {
     tmp
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/517).
 /// Computes the coefficients of $g(X) = \prod\limits_{i=0}^{k-1} (1 + u_{k - 1 - i} X^{2^i})$.
 fn compute_s<F: Field>(u: &[F], init: F) -> Vec<F> {
     assert!(!u.is_empty());
