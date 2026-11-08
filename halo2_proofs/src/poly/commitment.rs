@@ -1,3 +1,6 @@
+// Portions copyright (c) The Zakura Contributors, licensed under the MIT license or
+// the Apache License, Version 2.0, at your option.
+
 //! This module contains an implementation of the polynomial commitment scheme
 //! described in the [Halo][halo] paper.
 //!
@@ -40,14 +43,17 @@ pub struct Params<C: CurveAffine> {
     pub(crate) g_lagrange: Vec<C>,
     pub(crate) w: C,
     pub(crate) u: C,
+    // Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
     #[cfg(feature = "batch")]
     instance_window_cache: InstanceWindowCache<C>,
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 #[cfg(feature = "batch")]
 #[derive(Clone)]
 struct InstanceWindowCache<C>(Arc<Mutex<Option<Arc<Vec<C>>>>>);
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 #[cfg(feature = "batch")]
 impl<C> Default for InstanceWindowCache<C> {
     fn default() -> Self {
@@ -55,6 +61,7 @@ impl<C> Default for InstanceWindowCache<C> {
     }
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 #[cfg(feature = "batch")]
 impl<C> InstanceWindowCache<C> {
     fn get_or_grow(&self, base_count: usize, initialize: impl FnOnce() -> Vec<C>) -> Arc<Vec<C>> {
@@ -76,6 +83,7 @@ impl<C> InstanceWindowCache<C> {
     }
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 #[cfg(feature = "batch")]
 impl<C: CurveAffine> fmt::Debug for Params<C> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -91,6 +99,7 @@ impl<C: CurveAffine> fmt::Debug for Params<C> {
     }
 }
 
+// Adapted from zakura-core/common (https://github.com/zakura-core/common/pull/534).
 #[cfg(feature = "batch")]
 impl<C: CurveAffine> Params<C> {
     pub(crate) fn instance_window_table(&self, base_count: usize) -> Arc<Vec<C>> {
