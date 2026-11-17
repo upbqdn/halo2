@@ -181,10 +181,8 @@ where
             sums[*index] = sums[*index] + sums[column_count + *shared_index];
         }
         sums.truncate(column_count);
-        for ((commitment, sum), &mask) in commitments
-            .iter_mut()
-            .zip(sums)
-            .zip(&masks[first_column..])
+        for ((commitment, sum), &mask) in
+            commitments.iter_mut().zip(sums).zip(&masks[first_column..])
         {
             *commitment = table.offsets[mask] + sum;
         }

@@ -322,7 +322,15 @@ where
         let mut params = Params::<C>::new(4);
         if exceptional {
             let p = params.g_lagrange[0];
-            params.g_lagrange[..7].copy_from_slice(&[C::identity(), p, -p, p, p, -p, C::identity()]);
+            params.g_lagrange[..7].copy_from_slice(&[
+                C::identity(),
+                p,
+                -p,
+                p,
+                p,
+                -p,
+                C::identity(),
+            ]);
             params.w = C::identity();
         }
         let instances = (0..32)
@@ -401,7 +409,15 @@ where
         let mut params = Params::<C>::new(4);
         if exceptional {
             let p = params.g_lagrange[0];
-            params.g_lagrange[..7].copy_from_slice(&[C::identity(), p, -p, p, p, -p, C::identity()]);
+            params.g_lagrange[..7].copy_from_slice(&[
+                C::identity(),
+                p,
+                -p,
+                p,
+                p,
+                -p,
+                C::identity(),
+            ]);
             params.w = -p;
         }
         let table = glv_instance_table(&params).unwrap();
