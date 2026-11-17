@@ -20,6 +20,10 @@ and this project adheres to Rust's notion of
   the Pasta curves), kept as long as the parameters and shared by their clones.
   Columns longer than 64 rows keep the generic MSM. The `Debug` output and the
   serialized form of `Params`, and the transcript, are unchanged.
+- Instance commitments use reusable doubling-free sums for ten-row public instance
+  columns with seven dense values and three Boolean flags. Other shapes, flags,
+  and unsupported curves retain the generic path; default blinding, parameter
+  serialization, and transcript order are unchanged.
 
 ## [0.4.1] - 2026-10-26
 ### Changed

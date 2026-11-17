@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
-use ff::Field;
+use ff::{Field, PrimeField};
 use group::{Curve, Group};
 use pasta_curves::{EpAffine, Eq, EqAffine, Fp};
 use rand::rngs::SysRng;
 use rand_core::UnwrapErr;
 
 use super::{
-    commit_instance_columns, table_pays_off, WindowTable, MAX_TABLE_ROWS, MIN_BATCH_NORMALIZE,
+    commit_glv_instances, commit_instance_columns, glv_instance_table, table_pays_off,
+    WindowTable, MAX_TABLE_ROWS, MIN_BATCH_NORMALIZE, PREPARED_INSTANCE_BOOLEAN_ROWS,
+    PREPARED_INSTANCE_DENSE_ROWS, PREPARED_INSTANCE_ROWS,
 };
 use crate::{
     arithmetic::{BoothDigit, CurveAffine},
@@ -309,4 +311,149 @@ fn a_table_for_other_bases_is_not_used() {
         .is_none());
     commit_all(&params, &enough_columns(ROWS));
     commit_all(&params, &[column(ROWS, 3)]);
+}
+
+fn check_prepared_commitments_match_original_arithmetic<C>()
+where
+    C: CurveAffine,
+{
+    let mut rng = UnwrapErr(SysRng);
+    for exceptional in [false, true] {
+        let mut params = Params::<C>::new(4);
+        if exceptional {
+            let p = params.g_lagrange[0];
+            params.g_lagrange[..7].copy_from_slice(&[C::identity(), p, -p, p, p, -p, C::identity()]);
+            params.w = C::identity();
+        }
+        let instances = (0..32)
+            .map(|column| {
+                let mut instance = (0..PREPARED_INSTANCE_DENSE_ROWS)
+                    .map(|row| match (column + row) % 6 {
+                        0 => C::Scalar::ZERO,
+                        1 => C::Scalar::ONE,
+                        2 => -C::Scalar::ONE,
+                        3 => C::Scalar::from_u128(u128::MAX),
+                        _ => C::Scalar::random(&mut rng),
+                    })
+                    .collect::<Vec<_>>();
+                instance.extend((0..PREPARED_INSTANCE_BOOLEAN_ROWS).map(|flag| {
+                    if column & (1 << flag) == 0 {
+                        C::Scalar::ZERO
+                    } else {
+                        C::Scalar::ONE
+                    }
+                }));
+                instance
+            })
+            .collect::<Vec<_>>();
+        let slices = instances.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let ordinary = WindowTable::build(&params.g_lagrange[..PREPARED_INSTANCE_ROWS]);
+        let domain = EvaluationDomain::new(1, 4);
+        for count in [1, 2, 3, 8, 17, instances.len()] {
+            let prepared = commit_glv_instances(&params, &slices[..count]).unwrap();
+            assert_eq!(prepared, ordinary.commit(params.w, &slices[..count]));
+            for (instance, commitment) in instances.iter().zip(prepared) {
+                let original = instance
+                    .iter()
+                    .zip(&params.g_lagrange)
+                    .fold(params.w.to_curve(), |sum, (scalar, base)| {
+                        sum + *base * scalar
+                    });
+                assert_eq!(commitment, original);
+                assert_eq!(commitment, params.commit_lagrange_instance(instance));
+                let mut padded = domain.empty_lagrange();
+                for (coefficient, value) in padded.iter_mut().zip(instance) {
+                    *coefficient = *value;
+                }
+                assert_eq!(
+                    commitment,
+                    params.commit_lagrange(&padded, Blind::default())
+                );
+            }
+        }
+        assert!(commit_glv_instances(&params, &[]).is_none());
+        for len in [0, 7, 9, 11, 16] {
+            let invalid_shape = vec![C::Scalar::ZERO; len];
+            assert!(commit_glv_instances(&params, &[&invalid_shape]).is_none());
+        }
+        for flag in 0..PREPARED_INSTANCE_BOOLEAN_ROWS {
+            for invalid in [C::Scalar::from(2), -C::Scalar::ONE] {
+                let mut column = instances[0].clone();
+                column[PREPARED_INSTANCE_DENSE_ROWS + flag] = invalid;
+                assert!(commit_glv_instances(&params, &[&instances[0], &column]).is_none());
+            }
+        }
+    }
+}
+
+#[test]
+fn prepared_instance_commitments_match_original_arithmetic() {
+    check_prepared_commitments_match_original_arithmetic::<EqAffine>();
+    check_prepared_commitments_match_original_arithmetic::<EpAffine>();
+}
+
+#[test]
+fn prepared_instances_decline_undersized_parameters() {
+    let params = Params::<EqAffine>::new(3);
+    assert!(glv_instance_table(&params).is_none());
+}
+
+#[test]
+fn prepared_and_fallback_commitments_preserve_values() {
+    let params = Params::<EqAffine>::new(5);
+    for second_len in [9, 10, 11] {
+        for flag in [Fp::ZERO, Fp::ONE, Fp::from(2), -Fp::ONE] {
+            let mut first = vec![-Fp::ONE; PREPARED_INSTANCE_DENSE_ROWS];
+            first.extend([Fp::ONE, Fp::ZERO, Fp::ONE]);
+            let mut second = vec![Fp::ZERO; second_len];
+            second[PREPARED_INSTANCE_DENSE_ROWS] = flag;
+            commit_all(&params, &[first, second]);
+        }
+    }
+}
+
+#[test]
+fn glv_instance_cache_is_shared_and_does_not_change_params() {
+    let params = Arc::new(Params::<EqAffine>::new(4));
+    let debug_before = format!("{params:?}");
+    let mut serialized_before = vec![];
+    params.write(&mut serialized_before).unwrap();
+    let tables = std::thread::scope(|scope| {
+        (0..4)
+            .map(|_| {
+                let params = Arc::clone(&params);
+                scope.spawn(move || glv_instance_table(&params).unwrap())
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|thread| thread.join().unwrap())
+            .collect::<Vec<_>>()
+    });
+    assert!(tables.iter().all(|table| Arc::ptr_eq(&tables[0], table)));
+    let cloned = params.as_ref().clone();
+    assert!(Arc::ptr_eq(
+        &tables[0],
+        &glv_instance_table(&cloned).unwrap()
+    ));
+    assert_eq!(format!("{params:?}"), debug_before);
+    let mut serialized_after = vec![];
+    params.write(&mut serialized_after).unwrap();
+    assert_eq!(serialized_before, serialized_after);
+    let decoded = Params::<EqAffine>::read(&mut serialized_before.as_slice()).unwrap();
+    assert!(!Arc::ptr_eq(
+        &tables[0],
+        &glv_instance_table(&decoded).unwrap()
+    ));
+}
+
+#[test]
+fn a_glv_table_for_other_bases_is_not_used() {
+    let mut params = Params::<EqAffine>::new(4);
+    let built = glv_instance_table(&params).unwrap();
+    // Clones share the cache, so a clone whose bases differ must not use it.
+    params.g_lagrange.swap(0, 1);
+    assert!(!Arc::ptr_eq(&built, &glv_instance_table(&params).unwrap()));
+    let mut orchard = column::<Fp>(PREPARED_INSTANCE_DENSE_ROWS, 0);
+    orchard.extend([Fp::ONE, Fp::ZERO, Fp::ONE]);
+    commit_all(&params, &[orchard]);
 }
