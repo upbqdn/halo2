@@ -5,9 +5,9 @@ use rand_core::UnwrapErr;
 
 use super::{verify_proof_with_instance_commitments, InstanceCommitments, VerificationStrategy};
 use crate::{
-    plonk::{Error, VerifyingKey},
+    plonk::{Error, ProofPointLayouts, VerifyingKey},
     poly::commitment::{Guard, Params, MSM},
-    transcript::{Blake2bRead, EncodedChallenge},
+    transcript::{EncodedChallenge, PrefetchedBlake2bRead},
 };
 
 use maybe_rayon::iter::IntoParallelIterator;
@@ -96,6 +96,35 @@ where
     }
 }
 
+/// Decodes complete encodings only; transcript reads retain truncation errors.
+fn prefetch_points<C: CurveAffine>(
+    proof: &[u8],
+    ranges: &[std::ops::Range<usize>],
+) -> Vec<(usize, Option<C>)> {
+    let len = C::Repr::default().as_ref().len();
+    if len == 0 {
+        return Vec::new();
+    }
+    let (offsets, encodings): (Vec<usize>, Vec<C::Repr>) = ranges
+        .iter()
+        .filter_map(|range| {
+            let bytes = proof.get(range.start..range.end.min(proof.len()))?;
+            Some((range.start, bytes))
+        })
+        .flat_map(|(start, bytes)| {
+            bytes.chunks_exact(len).enumerate().map(move |(i, bytes)| {
+                let mut repr = C::Repr::default();
+                repr.as_mut().copy_from_slice(bytes);
+                (start + i * len, repr)
+            })
+        })
+        .unzip();
+    offsets
+        .into_iter()
+        .zip(C::batch_decode_vartime(&encodings))
+        .collect()
+}
+
 /// A verifier that checks multiple proofs in a batch. **This requires the
 /// `batch` crate feature to be enabled.**
 #[derive(Debug, Default)]
@@ -149,6 +178,9 @@ where
             }
         };
 
+        // Parsing success alone does not establish proof validity. Keep candidates
+        // bounded and private until the batch's final MSM check succeeds.
+        let learned_layouts = ProofPointLayouts::default();
         let final_msm = self
             .items
             .into_par_iter()
@@ -164,15 +196,27 @@ where
                     C::Scalar::random(&mut UnwrapErr(SysRng))
                 };
                 let strategy = BatchStrategy::new(params, rho);
-                let mut transcript = Blake2bRead::init(&item.proof[..]);
-                verify_proof_with_instance_commitments(
+                let circuits = item.instances.len();
+                let mut transcript = match vk.proof_point_layouts().get(circuits) {
+                    Some(ranges) => PrefetchedBlake2bRead::with_prefetched(
+                        &item.proof,
+                        prefetch_points(&item.proof, &ranges),
+                    ),
+                    None => PrefetchedBlake2bRead::recording(&item.proof),
+                };
+                let result = verify_proof_with_instance_commitments(
                     params,
                     vk,
                     strategy,
                     instance_commitments,
                     &mut transcript,
-                )
-                .map_err(|e| {
+                );
+                if result.is_ok() {
+                    if let Some(ranges) = transcript.into_recorded() {
+                        learned_layouts.insert(circuits, ranges);
+                    }
+                }
+                result.map_err(|e| {
                     tracing::debug!("Batch item {} failed verification: {}", i, e);
                     e
                 })
@@ -182,9 +226,10 @@ where
                 |acc, res| res.map(|proof_msm| accumulate_msm(acc, proof_msm)),
             );
 
-        match final_msm {
-            Ok(msm) => msm.eval(),
-            Err(_) => false,
+        let valid = final_msm.is_ok_and(|msm| msm.eval());
+        if valid {
+            learned_layouts.install(vk.proof_point_layouts());
         }
+        valid
     }
 }

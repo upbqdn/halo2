@@ -29,6 +29,10 @@ and this project adheres to Rust's notion of
   serialization, and transcript order are unchanged.
 - Prepared instance commitments reuse repeated public anchor terms within each
   worker's chunk, without changing commitment values or order.
+- Batch verification decodes proof points together using bounded layouts learned
+  only from successful batches. Verifying-key clones share at most 256 layouts
+  of 32 point runs each; cold proofs retain ordinary decoding. Proof bytes,
+  challenges, and malformed or truncated proof handling are unchanged.
 
 ## [0.4.1] - 2026-10-26
 ### Changed
