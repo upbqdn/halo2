@@ -141,12 +141,46 @@ where
     let mut commitments = vec![C::Curve::identity(); columns.len()];
     for_each_chunk(&mut commitments, 1, |commitments, first_column| {
         let columns = &columns[first_column..first_column + commitments.len()];
-        let dense = columns
+        let mut dense = columns
             .iter()
             .map(|column| &column[..PREPARED_INSTANCE_DENSE_ROWS])
             .collect::<Vec<_>>();
-        let sums = table.dense.sum_batch_vartime(&dense);
+        // Row zero is a public anchor. Group by canonical encoding so
+        // only repeated anchors need copied columns and an add-back.
+        let mut anchors = dense
+            .iter()
+            .enumerate()
+            .map(|(index, column)| (column[0].to_repr(), index))
+            .collect::<Vec<_>>();
+        anchors.sort_unstable_by(|a, b| a.0.as_ref().cmp(b.0.as_ref()));
+        let mut shared = Vec::new();
+        let mut repeated = Vec::new();
+        for group in anchors.chunk_by(|a, b| a.0.as_ref() == b.0.as_ref()) {
+            if group.len() > 1 {
+                let shared_index = shared.len();
+                shared.push([dense[group[0].1][0]]);
+                for &(_, index) in group {
+                    let mut column: [C::Scalar; PREPARED_INSTANCE_DENSE_ROWS] = dense[index]
+                        .try_into()
+                        .expect("prepared columns have exactly seven dense rows");
+                    column[0] = C::Scalar::ZERO;
+                    repeated.push((index, shared_index, column));
+                }
+            }
+        }
+        for (index, _, column) in &repeated {
+            dense[*index] = column.as_slice();
+        }
+        // Evaluate the shared terms in the same affine reduction as
+        // the remaining rows; omitted trailing scalars are zero.
+        dense.extend(shared.iter().map(|anchor| anchor.as_slice()));
+        let mut sums = table.dense.sum_batch_vartime(&dense);
         assert_eq!(sums.len(), dense.len(), "one prepared sum per column");
+        let column_count = columns.len();
+        for (index, shared_index, _) in &repeated {
+            sums[*index] = sums[*index] + sums[column_count + *shared_index];
+        }
+        sums.truncate(column_count);
         for ((commitment, sum), &mask) in commitments
             .iter_mut()
             .zip(sums)

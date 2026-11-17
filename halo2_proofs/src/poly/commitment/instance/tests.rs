@@ -7,9 +7,9 @@ use rand::rngs::SysRng;
 use rand_core::UnwrapErr;
 
 use super::{
-    commit_glv_instances, commit_instance_columns, glv_instance_table, table_pays_off,
-    WindowTable, MAX_TABLE_ROWS, MIN_BATCH_NORMALIZE, PREPARED_INSTANCE_BOOLEAN_ROWS,
-    PREPARED_INSTANCE_DENSE_ROWS, PREPARED_INSTANCE_ROWS,
+    commit_glv_instances, commit_instance_columns, glv_instance_table, instance_flag_mask,
+    table_pays_off, WindowTable, MAX_TABLE_ROWS, MIN_BATCH_NORMALIZE,
+    PREPARED_INSTANCE_BOOLEAN_ROWS, PREPARED_INSTANCE_DENSE_ROWS, PREPARED_INSTANCE_ROWS,
 };
 use crate::{
     arithmetic::{BoothDigit, CurveAffine},
@@ -390,6 +390,89 @@ where
 fn prepared_instance_commitments_match_original_arithmetic() {
     check_prepared_commitments_match_original_arithmetic::<EqAffine>();
     check_prepared_commitments_match_original_arithmetic::<EpAffine>();
+}
+
+fn check_shared_anchor_commitments_match_unshared_prepared_sums<C>()
+where
+    C: CurveAffine,
+{
+    let mut rng = UnwrapErr(SysRng);
+    for exceptional in [false, true] {
+        let mut params = Params::<C>::new(4);
+        if exceptional {
+            let p = params.g_lagrange[0];
+            params.g_lagrange[..7].copy_from_slice(&[C::identity(), p, -p, p, p, -p, C::identity()]);
+            params.w = -p;
+        }
+        let table = glv_instance_table(&params).unwrap();
+        for pattern in 0..5 {
+            let instances = (0u64..207)
+                .map(|column| {
+                    let mut instance = (0..PREPARED_INSTANCE_DENSE_ROWS)
+                        .map(|_| C::Scalar::random(&mut rng))
+                        .collect::<Vec<_>>();
+                    instance[0] = match pattern {
+                        0 => C::Scalar::from(column + 1),
+                        1 => -C::Scalar::ONE,
+                        2 => match column % 3 {
+                            0 => C::Scalar::ZERO,
+                            1 => C::Scalar::ONE,
+                            _ => C::Scalar::from(column + 100),
+                        },
+                        3 => C::Scalar::from(column / 2),
+                        // Distinct values with identical low 64 bits must
+                        // not be mistaken for a shared anchor.
+                        _ => C::Scalar::from_u128((u128::from(column % 7) << 64) | 1),
+                    };
+                    instance.extend((0..PREPARED_INSTANCE_BOOLEAN_ROWS).map(|flag| {
+                        if column & (1 << flag) == 0 {
+                            C::Scalar::ZERO
+                        } else {
+                            C::Scalar::ONE
+                        }
+                    }));
+                    instance
+                })
+                .collect::<Vec<_>>();
+            let slices = instances.iter().map(Vec::as_slice).collect::<Vec<_>>();
+            let dense = slices
+                .iter()
+                .map(|column| &column[..PREPARED_INSTANCE_DENSE_ROWS])
+                .collect::<Vec<_>>();
+            let mut independent = table.dense.sum_batch_vartime(&dense);
+            for (sum, column) in independent.iter_mut().zip(&slices) {
+                *sum = table.offsets[instance_flag_mask(column).unwrap()] + *sum;
+                assert_eq!(*sum, params.commit_lagrange_instance(column));
+            }
+            for threads in [1, 3, 8] {
+                let pool = maybe_rayon::ThreadPoolBuilder::new()
+                    .num_threads(threads)
+                    .build()
+                    .unwrap();
+                for count in [1, 2, 3, 8, 17, 33, 207] {
+                    let shared =
+                        pool.install(|| commit_glv_instances(&params, &slices[..count]).unwrap());
+                    assert_eq!(shared, independent[..count]);
+                    let reversed = slices[..count].iter().rev().copied().collect::<Vec<_>>();
+                    let shared = pool.install(|| commit_glv_instances(&params, &reversed).unwrap());
+                    assert_eq!(
+                        shared,
+                        independent[..count]
+                            .iter()
+                            .rev()
+                            .copied()
+                            .collect::<Vec<_>>()
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn shared_anchor_commitments_match_unshared_prepared_sums() {
+    check_shared_anchor_commitments_match_unshared_prepared_sums::<EqAffine>();
+    check_shared_anchor_commitments_match_unshared_prepared_sums::<EpAffine>();
 }
 
 #[test]
