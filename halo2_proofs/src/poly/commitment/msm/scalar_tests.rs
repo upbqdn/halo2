@@ -100,3 +100,73 @@ fn buffered_owned_msms_match_naive_sums() {
     check::<EpAffine>();
     check::<EqAffine>();
 }
+
+#[test]
+fn known_key_terms_match_the_previous_final_msm() {
+    use std::sync::Arc;
+
+    use super::KnownTerms;
+
+    fn check<C: CurveAffine>() {
+        let params = Params::<C>::new(4);
+        let mut rng = UnwrapErr(SysRng);
+        let recurring = [params.g[0], params.g[1], -params.g[0], params.g[1]];
+        let known = Arc::new(KnownTerms::new(recurring));
+        // Includes single proofs, parallel reduction shapes, repeated and negated
+        // commitments, unknown collisions, and both accepting/rejecting MSMs.
+        for count in [1, 2, 3, 4, 8, 16] {
+            for tampered in [false, true] {
+                let mut old = params.empty_msm();
+                let mut optimized = params.empty_msm();
+                for _ in 0..count {
+                    let mut proof = params.empty_msm();
+                    proof.add_to_g_scalars(
+                        &(0..params.n)
+                            .map(|_| C::Scalar::random(&mut rng))
+                            .collect::<Vec<_>>(),
+                    );
+                    proof.add_to_w_scalar(C::Scalar::random(&mut rng));
+                    proof.add_to_u_scalar(C::Scalar::random(&mut rng));
+                    for point in recurring.into_iter().chain([
+                        params.g[2],
+                        -params.g[2],
+                        params.w,
+                        C::identity(),
+                    ]) {
+                        proof.append_term(C::Scalar::random(&mut rng), point);
+                    }
+                    old.add_msm_batch(proof.clone());
+                    proof.extract_known(&known);
+                    optimized.add_msm_batch(proof);
+                }
+                // Make one MSM exactly zero and the other nonzero by an unrelated
+                // base; this checks both final evaluation results, not just terms.
+                let old_sum = {
+                    let (g, w, u, other) = old.fingerprint_terms();
+                    let mut sum = C::Curve::identity();
+                    for (scalar, base) in g.unwrap().iter().zip(&params.g) {
+                        sum += *base * scalar;
+                    }
+                    sum += params.w * w.unwrap();
+                    sum += params.u * u.unwrap();
+                    for (scalar, x, y) in other {
+                        sum += C::from_xy(x, y).unwrap() * scalar;
+                    }
+                    sum
+                };
+                let correction = (-old_sum).to_affine_vartime();
+                old.append_term(C::Scalar::ONE, correction);
+                optimized.append_term(C::Scalar::ONE, correction);
+                if tampered {
+                    old.append_term(C::Scalar::ONE, params.g[3]);
+                    optimized.append_term(C::Scalar::ONE, params.g[3]);
+                }
+                assert_eq!(old.fingerprint_terms(), optimized.fingerprint_terms());
+                assert_eq!(old.clone().eval(), !tampered);
+                assert_eq!(optimized.eval(), !tampered);
+            }
+        }
+    }
+    check::<EpAffine>();
+    check::<EqAffine>();
+}

@@ -378,3 +378,92 @@ fn only_successful_batches_install_layouts_and_clones_share_them() {
     changed_scalar[scalar_start..scalar_start + 32].copy_from_slice(F::from(23).to_repr().as_ref());
     compare(&changed_scalar);
 }
+
+#[test]
+fn known_key_final_msm_matches_old_on_proofs_and_errors() {
+    let params = Params::<C>::new(4);
+    let circuit = TestCircuit(Value::unknown());
+    let vk = keygen_vk(&params, &circuit).unwrap();
+    let pk = keygen_pk(&params, vk.clone(), &circuit).unwrap();
+    let known = std::sync::Arc::new(KnownTerms::new(
+        vk.fixed_commitments
+            .iter()
+            .chain(vk.permutation.commitments())
+            .copied(),
+    ));
+    let proofs = (0..8)
+        .map(|_| make_proof(&params, &pk, 1))
+        .collect::<Vec<_>>();
+
+    for count in 1..=proofs.len() {
+        for altered in [0, 1, 2, 3] {
+            let mut old = params.empty_msm();
+            let mut optimized = params.empty_msm();
+            for (index, bytes) in proofs[..count].iter().enumerate() {
+                let mut bytes = bytes.clone();
+                let instance = instances(
+                    1,
+                    if altered == 1 && index + 1 == count {
+                        8
+                    } else {
+                        7
+                    },
+                );
+                if index + 1 == count {
+                    if altered == 2 {
+                        bytes.pop();
+                    } else if altered == 3 {
+                        bytes[..32].fill(255);
+                    }
+                }
+                let mut commitments =
+                    InstanceCommitments::for_proofs(&params, &vk, &[&instance, &instance])
+                        .unwrap()
+                        .into_iter();
+                let rho = F::from(index as u64 + 1);
+                let mut old_transcript = PrefetchedBlake2bRead::recording(bytes.as_slice());
+                let mut new_transcript = PrefetchedBlake2bRead::recording(bytes.as_slice());
+                let old_proof = verify_proof_with_instance_commitments(
+                    &params,
+                    &vk,
+                    BatchStrategy::new(&params, rho),
+                    commitments.next().unwrap(),
+                    &mut old_transcript,
+                );
+                let mut new_proof = verify_proof_with_instance_commitments(
+                    &params,
+                    &vk,
+                    BatchStrategy::new(&params, rho),
+                    commitments.next().unwrap(),
+                    &mut new_transcript,
+                );
+                if let Ok(msm) = &mut new_proof {
+                    msm.extract_known(&known);
+                }
+                assert_eq!(
+                    format!("{:?}", old_proof.as_ref().map(|_| ())),
+                    format!("{:?}", new_proof.as_ref().map(|_| ()))
+                );
+                assert_eq!(
+                    old_transcript.squeeze_challenge().get_scalar(),
+                    new_transcript.squeeze_challenge().get_scalar(),
+                );
+                match (old_proof, new_proof) {
+                    (Ok(old_proof), Ok(new_proof)) => {
+                        old.add_msm_batch(old_proof);
+                        optimized.add_msm_batch(new_proof);
+                    }
+                    (Err(_), Err(_)) => break,
+                    _ => unreachable!("errors above are identical"),
+                }
+            }
+            assert_eq!(old.fingerprint_terms(), optimized.fingerprint_terms());
+            assert_eq!(old.clone().eval(), optimized.eval());
+            if altered == 0 {
+                assert!(old.eval());
+            } else if altered == 1 {
+                assert!(!old.eval());
+            }
+        }
+    }
+}

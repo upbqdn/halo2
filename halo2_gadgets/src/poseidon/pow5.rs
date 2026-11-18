@@ -866,6 +866,18 @@ mod tests {
         assert!(
             plonk::verify_proof(&params, pk.get_vk(), strategy, &[&[]], &mut transcript).is_ok()
         );
+
+        let mut batch = plonk::BatchVerifier::new();
+        for _ in 0..4 {
+            batch.add_proof(vec![vec![]], proof.clone());
+        }
+        assert!(batch.finalize(&params, pk.get_vk()));
+
+        let mut malformed = proof;
+        malformed[..32].fill(255);
+        let mut batch = plonk::BatchVerifier::new();
+        batch.add_proof(vec![vec![]], malformed);
+        assert!(!batch.finalize(&params, pk.get_vk()));
     }
 
     #[test]

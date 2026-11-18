@@ -15,6 +15,9 @@ and this project adheres to Rust's notion of
   redundant IPA coefficient and MSM allocations. Batch verification applies
   random weights during coefficient generation and coalesces commitment terms
   once before the final MSM.
+- Batch verification coalesces fixed and permutation verifying-key commitments
+  per proof before aggregating the final MSM, and uses Pasta's full-width
+  identity check when available; proof acceptance and transcripts are unchanged.
 - Commitments to public instance columns use a table of multiples of the
   Lagrange bases, evaluated in lockstep across columns: across all proofs in
   batch verification, and across the circuits of one proof in `verify_proof`.

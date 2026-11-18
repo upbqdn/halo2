@@ -41,7 +41,7 @@ plotters = { workspace = true, optional = true }
 [dev-dependencies]
 criterion.workspace = true
 halo2_poseidon = { workspace = true, features = ["test-dependencies"] }
-halo2_proofs = { workspace = true, features = ["unstable-circuit-fixtures"] }
+halo2_proofs = { workspace = true, features = ["unstable-circuit-fixtures", "batch"] }
 proptest.workspace = true
 rand = { workspace = true, features = ["thread_rng"] }
 sinsemilla = { workspace = true, features = ["test-dependencies"] }

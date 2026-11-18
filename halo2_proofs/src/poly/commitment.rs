@@ -22,6 +22,8 @@ mod verifier;
 pub(crate) use instance::commit_instance_columns;
 #[cfg(test)]
 pub(crate) use instance::{table_pays_off, MIN_BATCH_NORMALIZE};
+#[cfg(feature = "batch")]
+pub(crate) use msm::KnownTerms;
 pub use msm::MSM;
 pub use prover::create_proof;
 pub use verifier::{verify_proof, Accumulator, Guard};
