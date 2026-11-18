@@ -112,6 +112,9 @@ impl<C: CurveAffine> KnownTerms<C> {
 
 type KnownScalars<C> = (Arc<KnownTerms<C>>, Vec<<C as CurveAffine>::ScalarExt>);
 
+// Sorting a small batch's bases helps the parallel MSM more than it costs.
+const SORTED_KNOWN_BATCH_TERMS: usize = 2048;
+
 /// A multiscalar multiplication in the polynomial commitment scheme
 #[derive(Debug, Clone)]
 pub struct MSM<'a, C: CurveAffine> {
@@ -342,6 +345,9 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
                     .filter(|(_, scalar)| !bool::from(scalar.is_zero()))
                     .map(|((x, y), scalar)| (*x, (scalar, *y))),
             );
+            if self.batched_other.len() <= SORTED_KNOWN_BATCH_TERMS {
+                self.batched_other.sort_by_key(|(x, _)| *x);
+            }
         } else if !self.batched_other.is_empty() {
             self.batched_other
                 .extend(self.other.iter().map(|(x, v)| (*x, *v)));
