@@ -9,6 +9,8 @@ use std::hash::Hash;
 use super::*;
 use crate::{arithmetic::CurveAffine, transcript::ChallengeScalar};
 
+#[cfg(test)]
+mod differential_tests;
 mod prover;
 mod verifier;
 
@@ -177,10 +179,6 @@ where
         }
         data.point_indices.push(point_index);
         data.evals.push(query.get_eval());
-    }
-
-    if commitments.is_empty() {
-        return None;
     }
 
     let mut point_sets = BTreeMap::new();
@@ -425,7 +423,7 @@ fn test_identical_queries() {
 
 #[cfg(test)]
 mod proptests {
-    use group::ff::{Field, FromUniformBytes};
+    use group::ff::FromUniformBytes;
     use proptest::{
         collection::{hash_set, vec},
         prelude::*,
@@ -434,57 +432,6 @@ mod proptests {
 
     use super::construct_intermediate_sets;
     use pasta_curves::Fp;
-    use std::collections::{BTreeMap, BTreeSet};
-
-    use indexmap::IndexMap;
-
-    // The pinned two-pass construction, retained as an independent oracle.
-    fn original_sets(
-        queries: &[MyQuery<Fp>],
-    ) -> Option<(Vec<(usize, usize, Vec<usize>, Vec<Fp>)>, Vec<Vec<Fp>>)> {
-        let mut by_commitment: IndexMap<usize, Vec<(usize, Fp)>> = IndexMap::new();
-        let mut point_indices = BTreeMap::new();
-        for query in queries {
-            let next = point_indices.len();
-            let index = *point_indices.entry(query.point).or_insert(next);
-            by_commitment
-                .entry(query.commitment)
-                .or_default()
-                .push((index, query.eval));
-        }
-        if by_commitment.is_empty() {
-            return None;
-        }
-        let mut unique_sets: BTreeMap<BTreeSet<usize>, usize> = BTreeMap::new();
-        let commitments = by_commitment
-            .into_iter()
-            .map(|(commitment, values)| {
-                let set = values
-                    .iter()
-                    .map(|(index, _)| *index)
-                    .collect::<BTreeSet<_>>();
-                if values.len() != set.len() {
-                    return None;
-                }
-                let next = unique_sets.len();
-                let set_index = *unique_sets.entry(set).or_insert(next);
-                let indices = values.iter().map(|(index, _)| *index).collect();
-                let mut ordered = values;
-                ordered.sort_unstable_by_key(|(index, _)| *index);
-                let evals = ordered.into_iter().map(|(_, eval)| eval).collect();
-                Some((commitment, set_index, indices, evals))
-            })
-            .collect::<Option<Vec<_>>>()?;
-        let mut inverse_points = vec![Fp::ZERO; point_indices.len()];
-        for (point, index) in point_indices {
-            inverse_points[index] = point;
-        }
-        let mut point_sets = vec![Vec::new(); unique_sets.len()];
-        for (set, index) in unique_sets {
-            point_sets[index] = set.into_iter().map(|point| inverse_points[point]).collect();
-        }
-        Some((commitments, point_sets))
-    }
 
     use std::convert::TryFrom;
 
@@ -590,24 +537,6 @@ mod proptests {
 
             assert_eq!(set_indices, new_set_indices);
             assert_eq!(point_indices, new_point_indices);
-        }
-        #[test]
-        fn matches_original_construction(
-            (mut queries, _) in compare_queries(8, 8, 16),
-            tamper in any::<bool>(),
-        ) {
-            if tamper {
-                let mut duplicate = queries[0].clone();
-                duplicate.eval += Fp::ONE;
-                queries.push(duplicate);
-            }
-            let expected = original_sets(&queries);
-            let actual = construct_intermediate_sets(queries).map(|(data, points)| {
-                (data.into_iter().map(|item| (
-                    item.commitment, item.set_index, item.point_indices, item.evals,
-                )).collect(), points)
-            });
-            prop_assert_eq!(actual, expected);
         }
     }
 }
