@@ -196,12 +196,11 @@ pub fn small_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::C
 
 /// Multiscalar multiplication for public scalars and bases.
 ///
-/// This variable-time entry point tries the curve-specific backend before the
-/// generic implementation. Witness-bearing prover operations must continue to
+/// This variable-time entry point uses Pasta's curve-specific planner and its
+/// generic Booth fallback. Witness-bearing prover operations must continue to
 /// use `best_multiexp` instead.
 pub(crate) fn best_multiexp_public<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
-    assert_eq!(coeffs.len(), bases.len());
-    C::CurveExt::try_multiexp_vartime(coeffs, bases).unwrap_or_else(|| best_multiexp(coeffs, bases))
+    pasta_curves::arithmetic::best_multiexp_vartime(coeffs, bases)
 }
 
 /// Performs a multi-exponentiation operation.

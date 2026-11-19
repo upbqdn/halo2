@@ -92,6 +92,22 @@ fn test_multiexp_hook_vesta() {
 }
 
 #[test]
+fn test_large_verifier_msm_pasta_fallback_matches_generic() {
+    let mut rng = UnwrapErr(SysRng);
+    let coeffs = (0..7150).map(|_| Fp::random(&mut rng)).collect::<Vec<_>>();
+    let bases = (0..7150)
+        .map(|_| Eq::random(&mut rng).to_affine_vartime())
+        .collect::<Vec<_>>();
+    for len in [3279, 4450, 7150] {
+        assert_eq!(
+            best_multiexp_public(&coeffs[..len], &bases[..len]),
+            best_multiexp(&coeffs[..len], &bases[..len]),
+            "EqAffine MSM of length {len}"
+        );
+    }
+}
+
+#[test]
 #[should_panic]
 fn test_multiexp_missing_base() {
     best_multiexp_public::<EqAffine>(&[Fp::ONE], &[]);
