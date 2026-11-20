@@ -395,11 +395,11 @@ fn known_key_final_msm_matches_old_on_proofs_and_errors() {
         .map(|_| make_proof(&params, &pk, 1))
         .collect::<Vec<_>>();
 
-    for count in 1..=proofs.len() {
+    for count in (1..=proofs.len()).chain([15, 64]) {
         for altered in [0, 1, 2, 3] {
             let mut old = params.empty_msm();
             let mut optimized = params.empty_msm();
-            for (index, bytes) in proofs[..count].iter().enumerate() {
+            for (index, bytes) in proofs.iter().cycle().take(count).enumerate() {
                 let mut bytes = bytes.clone();
                 let instance = instances(
                     1,

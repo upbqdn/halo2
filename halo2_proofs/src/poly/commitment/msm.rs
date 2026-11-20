@@ -1,5 +1,5 @@
 use super::Params;
-use crate::arithmetic::{best_multiexp_public, CurveAffine, CurveExt};
+use crate::arithmetic::{best_multiexp_public, CurveAffine};
 use ff::{Field, PrimeField};
 use group::Group;
 
@@ -332,7 +332,6 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
 
     /// Perform variable-time multiexp on public inputs and check that it results in zero.
     pub fn eval(mut self) -> bool {
-        let full_width = self.known.is_some();
         if let Some((known, scalars)) = self.known.take() {
             // The other terms may repeat, but an MSM does not require distinct bases.
             self.batched_other.extend(self.other);
@@ -387,16 +386,6 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
         }
 
         assert_eq!(scalars.len(), len);
-        if full_width {
-            // The Pasta backend skips canonical scalar conversion by evaluating
-            // an invertibly scaled MSM. Fallbacks retain the ordinary check.
-            if let Some(is_identity) =
-                C::CurveExt::try_multiexp_full_width_is_identity_vartime(&scalars, &bases)
-            {
-                return is_identity;
-            }
-        }
-
         bool::from(best_multiexp_public(&scalars, &bases).is_identity())
     }
 

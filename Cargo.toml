@@ -56,5 +56,4 @@ gumdrop = "0.8"
 proptest = "1"
 
 [patch.crates-io]
-# Pasta's public full-width identity check.
-pasta_curves = { git = "https://github.com/upbqdn/pasta_curves", rev = "833d62d7bb7db5fdc23d0e8a3d5d4fb964af9515" }
+pasta_curves = { git = "https://github.com/upbqdn/pasta_curves", rev = "67d1040a18798101541c66f8a012b57e770e3d44" }
