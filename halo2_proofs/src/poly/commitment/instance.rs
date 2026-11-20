@@ -174,8 +174,8 @@ where
         // Evaluate the shared terms in the same affine reduction as
         // the remaining rows; omitted trailing scalars are zero.
         dense.extend(shared.iter().map(|anchor| anchor.as_slice()));
-        let mut sums = table.dense.sum_batch_vartime(&dense);
-        assert_eq!(sums.len(), dense.len(), "one prepared sum per column");
+        let mut sums = vec![C::Curve::identity(); dense.len()];
+        table.dense.sum_batch_vartime(&dense, &mut sums);
         let column_count = columns.len();
         for (index, shared_index, _) in &repeated {
             sums[*index] = sums[*index] + sums[column_count + *shared_index];

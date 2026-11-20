@@ -455,7 +455,8 @@ where
                 .iter()
                 .map(|column| &column[..PREPARED_INSTANCE_DENSE_ROWS])
                 .collect::<Vec<_>>();
-            let mut independent = table.dense.sum_batch_vartime(&dense);
+            let mut independent = vec![C::Curve::identity(); dense.len()];
+            table.dense.sum_batch_vartime(&dense, &mut independent);
             for (sum, column) in independent.iter_mut().zip(&slices) {
                 *sum = table.offsets[instance_flag_mask(column).unwrap()] + *sum;
                 assert_eq!(*sum, params.commit_lagrange_instance(column));
