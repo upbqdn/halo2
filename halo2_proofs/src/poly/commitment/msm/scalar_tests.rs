@@ -1,4 +1,4 @@
-use super::CanonicalFieldKey;
+use super::{CanonicalFieldKey, KnownTerms};
 use crate::poly::commitment::Params;
 use ff::{Field, PrimeField};
 use group::Group;
@@ -8,6 +8,7 @@ use pasta_curves::{
 };
 use rand::rngs::SysRng;
 use rand_core::UnwrapErr;
+use std::sync::Arc;
 
 #[test]
 fn cached_keys_preserve_pasta_order() {
@@ -94,6 +95,50 @@ fn buffered_owned_msms_match_naive_sums() {
                     msm.append_term(C::Scalar::ONE, params.g[0]);
                     assert!(!msm.eval());
                 }
+            }
+        }
+    }
+    check::<EpAffine>();
+    check::<EqAffine>();
+}
+
+#[test]
+fn known_terms_match_canonical_batch_for_duplicate_and_negated_bases() {
+    fn check<C: CurveAffine>() {
+        let params = Params::<C>::new(3);
+        let p = params.g[1];
+        let q = params.g[2];
+        let unknown = params.g[3];
+        for known in [
+            Arc::new(KnownTerms::new([p, -p, p, q, C::identity()])),
+            Arc::new(KnownTerms::new([-p, p, q])),
+        ] {
+            assert_eq!(known.points.len(), 2);
+
+            for count in [2, 2049] {
+                let mut plain = params.empty_msm();
+                let mut indexed = params.empty_msm();
+                for i in 0..count {
+                    let mut proof = params.empty_msm();
+                    if i % 2 == 0 {
+                        proof.append_term(C::Scalar::from(2), p);
+                        proof.append_term(C::Scalar::from(3), -p);
+                    } else {
+                        proof.append_term(C::Scalar::from(3), -p);
+                        proof.append_term(C::Scalar::from(2), p);
+                    }
+                    proof.append_term(C::Scalar::from(5), q);
+                    proof.append_term(C::Scalar::from(7), unknown);
+                    proof.append_term(C::Scalar::from(11), -unknown);
+                    proof.scale(C::Scalar::from(3));
+                    let mut extracted = proof.clone();
+                    extracted.extract_known(&known);
+                    assert_eq!(extracted.other.len(), 1);
+                    plain.add_msm_batch(proof);
+                    indexed.add_msm_batch(extracted);
+                }
+                assert_eq!(plain.clone().eval_point(), indexed.clone().eval_point());
+                assert_eq!(plain.eval(), indexed.eval());
             }
         }
     }

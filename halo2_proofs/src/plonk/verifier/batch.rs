@@ -2,11 +2,12 @@ use group::ff::{Field, FromUniformBytes};
 use pasta_curves::arithmetic::CurveAffine;
 use rand::rngs::SysRng;
 use rand_core::UnwrapErr;
+use std::sync::Arc;
 
 use super::{verify_proof_with_instance_commitments, InstanceCommitments, VerificationStrategy};
 use crate::{
     plonk::{Error, ProofPointLayouts, VerifyingKey},
-    poly::commitment::{Guard, Params, MSM},
+    poly::commitment::{Guard, KnownTerms, Params, MSM},
     transcript::{EncodedChallenge, PrefetchedBlake2bRead},
 };
 
@@ -165,6 +166,12 @@ where
             acc
         }
 
+        let known = Arc::new(KnownTerms::new(
+            vk.fixed_commitments
+                .iter()
+                .chain(vk.permutation.commitments())
+                .copied(),
+        ));
         let instances = self
             .items
             .iter()
@@ -204,13 +211,16 @@ where
                     ),
                     None => PrefetchedBlake2bRead::recording(&item.proof),
                 };
-                let result = verify_proof_with_instance_commitments(
+                let mut result = verify_proof_with_instance_commitments(
                     params,
                     vk,
                     strategy,
                     instance_commitments,
                     &mut transcript,
                 );
+                if let Ok(msm) = &mut result {
+                    msm.extract_known(&known);
+                }
                 if result.is_ok() {
                     if let Some(ranges) = transcript.into_recorded() {
                         learned_layouts.insert(circuits, ranges);
