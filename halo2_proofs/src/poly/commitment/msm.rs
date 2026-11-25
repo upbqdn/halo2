@@ -337,7 +337,29 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
     }
 
     /// Evaluate the MSM; also used to compare batch paths in tests.
-    pub(crate) fn eval_point(mut self) -> C::Curve {
+    pub(crate) fn eval_point(self) -> C::Curve {
+        self.eval_point_with_dump(None)
+    }
+
+    /// Capture only the final batch MSM, after known terms and scaling are assembled.
+    #[cfg(feature = "batch")]
+    pub(crate) fn eval_final_batch(self) -> bool {
+        use std::sync::OnceLock;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static DUMP_DIR: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
+        static DUMP_COUNT: AtomicU64 = AtomicU64::new(0);
+        let dump = DUMP_DIR
+            .get_or_init(|| std::env::var_os("HALO2_DUMP_FINAL_MSM").map(Into::into))
+            .as_deref()
+            .and_then(|dir| {
+                let sequence = DUMP_COUNT.fetch_add(1, Ordering::Relaxed);
+                (sequence == 0).then_some((dir, sequence))
+            });
+        bool::from(self.eval_point_with_dump(dump).is_identity())
+    }
+
+    fn eval_point_with_dump(mut self, dump: Option<(&std::path::Path, u64)>) -> C::Curve {
         if let Some((known, known_scalars)) = self.known.take() {
             for ((x, y), scalar) in known.points.iter().zip(known_scalars) {
                 if !bool::from(scalar.is_zero()) {
@@ -392,6 +414,15 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
 
         assert_eq!(scalars.len(), len);
 
+        #[cfg(feature = "batch")]
+        if let Some((dir, sequence)) = dump {
+            if let Err(error) = dump_final_msm::<C>(dir, sequence, &scalars, &bases) {
+                eprintln!("HALO2_DUMP_FINAL_MSM: {error}");
+            }
+        }
+        #[cfg(not(feature = "batch"))]
+        let _ = dump;
+
         best_multiexp_public(&scalars, &bases)
     }
 
@@ -425,6 +456,44 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
             .collect();
         (self.g_scalars.clone(), self.w_scalar, self.u_scalar, other)
     }
+}
+
+/// u64 LE term count, followed by scalar and compressed affine base (32 bytes each).
+#[cfg(feature = "batch")]
+fn dump_final_msm<C: CurveAffine>(
+    dir: &std::path::Path,
+    sequence: u64,
+    scalars: &[C::Scalar],
+    bases: &[C],
+) -> std::io::Result<()> {
+    use std::io::{BufWriter, Write};
+
+    let path = dir.join(format!("final-msm-{}-{sequence}.bin", std::process::id()));
+    let mut file = BufWriter::new(
+        std::fs::File::options()
+            .write(true)
+            .create_new(true)
+            .open(&path)?,
+    );
+    // usize fits u64 on supported 32/64-bit targets.
+    file.write_all(&(scalars.len() as u64).to_le_bytes())?;
+    for (scalar, base) in scalars.iter().zip(bases) {
+        let scalar = scalar.to_repr();
+        let base = base.to_bytes();
+        if scalar.as_ref().len() != 32 || base.as_ref().len() != 32 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "final MSM requires 32-byte Pasta encodings",
+            ));
+        }
+        file.write_all(scalar.as_ref())?;
+        file.write_all(base.as_ref())?;
+    }
+    file.flush()?;
+    // Both Pasta curves share the same scalar width and planner calibration.
+    let plan = pasta_curves::glv::debug_msm_plan::<pasta_curves::Eq>(scalars.len());
+    eprintln!("final MSM dump {}: {} terms, plan {plan:?}", path.display(), scalars.len());
+    Ok(())
 }
 
 #[cfg(test)]

@@ -236,6 +236,6 @@ where
                 |acc, res| res.map(|proof_msm| accumulate_msm(acc, proof_msm)),
             );
 
-        final_msm.is_ok_and(|msm| msm.eval())
+        final_msm.is_ok_and(|msm| msm.eval_final_batch())
     }
 }

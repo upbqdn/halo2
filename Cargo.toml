@@ -26,7 +26,7 @@ ff = { version = "0.14", default-features = false, features = ["alloc"] }
 group = "0.14"
 # Draft: requires the pending Pasta MSM hook and multicore feature.
 # Raise the minimum to their first containing release before merging.
-pasta_curves = { version = "0.6", features = ["glv"] }
+pasta_curves = { version = "0.6", features = ["glv", "asm"] }
 rand = { version = "0.10", default-features = false, features = ["sys_rng"] }
 rand_core = { version = "0.10", default-features = false }
 sinsemilla = "0.2"
@@ -56,5 +56,5 @@ gumdrop = "0.8"
 proptest = "1"
 
 [patch.crates-io]
-# pasta_curves 0.6.4 plus the unreleased fork commits this branch is benchmarked with.
-pasta_curves = { git = "https://github.com/upbqdn/pasta_curves", rev = "62f83c889634e10a6f0c34cf3e69d0e2f4e05b38" }
+# Debug capture uses the local Pasta planner accessor (not published or pushed).
+pasta_curves = { path = "../pasta-rc-on-0.6.4" }
