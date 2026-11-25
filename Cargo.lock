@@ -1186,8 +1186,8 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "pasta_curves"
-version = "0.6.3"
-source = "git+https://github.com/upbqdn/pasta_curves?rev=f444e7eba974eea2126e64eaaa548358da362615#f444e7eba974eea2126e64eaaa548358da362615"
+version = "0.6.4"
+source = "git+https://github.com/upbqdn/pasta_curves?rev=62f83c889634e10a6f0c34cf3e69d0e2f4e05b38#62f83c889634e10a6f0c34cf3e69d0e2f4e05b38"
 dependencies = [
  "blake2b_simd",
  "ff",
