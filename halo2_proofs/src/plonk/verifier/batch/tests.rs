@@ -13,7 +13,7 @@ use crate::{
         create_proof, keygen_pk, keygen_vk, verify_proof, Advice, Circuit, Column,
         ConstraintSystem, Error, Instance, ProvingKey, SingleVerifier, VerifyingKey,
     },
-    poly::commitment::{table_pays_off, Params},
+    poly::commitment::{table_pays_off, KnownTerms, Params},
     transcript::{
         Blake2bRead, Blake2bWrite, Challenge255, EncodedChallenge, Transcript, TranscriptWrite,
     },
@@ -377,4 +377,74 @@ fn only_successful_batches_install_layouts_and_clones_share_them() {
     let scalar_start = ranges[0].end;
     changed_scalar[scalar_start..scalar_start + 32].copy_from_slice(F::from(23).to_repr().as_ref());
     compare(&changed_scalar);
+}
+
+#[test]
+fn known_vk_terms_match_unindexed_batch_for_valid_and_tampered_proofs() {
+    let params = Params::<C>::new(4);
+    let circuit = TestCircuit(Value::unknown());
+    let vk = keygen_vk(&params, &circuit).unwrap();
+    let pk = keygen_pk(&params, vk.clone(), &circuit).unwrap();
+    let one = make_proof(&params, &pk, 1);
+    let two = make_proof(&params, &pk, 2);
+    let known = Arc::new(KnownTerms::new(
+        vk.fixed_commitments
+            .iter()
+            .chain(vk.permutation.commitments())
+            .copied(),
+    ));
+
+    let mut warm = BatchVerifier::new();
+    warm.add_proof(instances(1, 7), one.clone());
+    assert!(warm.finalize(&params, &vk));
+    let ranges = vk.proof_point_layouts().get(1).unwrap();
+    let scalar_start = ranges[0].end;
+    let mut tampered = one.clone();
+    let replacement = F::from(23).to_repr();
+    let scalar_end = scalar_start
+        .checked_add(replacement.as_ref().len())
+        .unwrap();
+    tampered[scalar_start..scalar_end].copy_from_slice(replacement.as_ref());
+
+    for invalid in [false, true] {
+        let proofs = [
+            (one.as_slice(), 1, F::ONE),
+            (two.as_slice(), 2, F::from(3)),
+            (
+                if invalid {
+                    tampered.as_slice()
+                } else {
+                    one.as_slice()
+                },
+                1,
+                F::from(11),
+            ),
+        ];
+        let mut plain = params.empty_msm();
+        let mut indexed = params.empty_msm();
+        let mut batch = BatchVerifier::new();
+        for (proof, circuits, rho) in proofs {
+            let values = [F::from(7)];
+            let columns = [values.as_slice()];
+            let inputs = vec![columns.as_slice(); circuits];
+            let mut transcript = Blake2bRead::<_, C, Challenge255<C>>::init(proof);
+            let proof_msm = verify_proof(
+                &params,
+                &vk,
+                BatchStrategy::new(&params, rho),
+                &inputs,
+                &mut transcript,
+            )
+            .unwrap();
+            let mut extracted = proof_msm.clone();
+            extracted.extract_known(&known);
+            plain.add_msm_batch(proof_msm);
+            indexed.add_msm_batch(extracted);
+            batch.add_proof(instances(circuits, 7), proof.to_vec());
+        }
+        assert_eq!(plain.clone().eval_point(), indexed.clone().eval_point());
+        assert_eq!(plain.eval(), !invalid);
+        assert_eq!(indexed.eval(), !invalid);
+        assert_eq!(batch.finalize(&params, &vk), !invalid);
+    }
 }
