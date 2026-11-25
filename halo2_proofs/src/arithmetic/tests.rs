@@ -102,3 +102,59 @@ fn test_multiexp_missing_base() {
 fn test_multiexp_missing_coefficient() {
     best_multiexp_public::<EpAffine>(&[], &[EpAffine::from(Ep::generator())]);
 }
+
+#[cfg(feature = "multicore")]
+#[test]
+fn parallel_booth_windows_match_naive_sum_and_serial_coordinates() {
+    fn check<C: CurveAffine>() {
+        let generator = C::Curve::generator();
+        let bases = [
+            C::from(generator),
+            C::identity(),
+            C::from(-generator),
+            C::from(generator.double()),
+            C::from(-generator.double()),
+        ];
+        let scalars = [
+            C::Scalar::ONE,
+            C::Scalar::ZERO,
+            -C::Scalar::ONE,
+            C::Scalar::from(3),
+            C::Scalar::from(4),
+            C::Scalar::from(7),
+        ];
+        let pools = [1, 2, 4, 32].map(|threads| {
+            maybe_rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .expect("test Rayon pool can be created")
+        });
+
+        // Lengths cross the width-1, width-3, width-4, width-5 and width-6
+        // thresholds; the 32-thread pool takes the parallel path above 32 terms.
+        for len in [0, 1, 2, 3, 4, 5, 31, 32, 33, 64, 160] {
+            let coeffs = scalars.into_iter().cycle().take(len).collect::<Vec<_>>();
+            let points = bases.into_iter().cycle().take(len).collect::<Vec<_>>();
+            let expected = coeffs
+                .iter()
+                .zip(&points)
+                .fold(C::Curve::identity(), |sum, (scalar, base)| {
+                    sum + *base * scalar
+                });
+            let serial = pools[0].install(|| best_multiexp(&coeffs, &points));
+
+            for (threads, pool) in [1, 2, 4, 32].into_iter().zip(&pools) {
+                let actual = pool.install(|| best_multiexp(&coeffs, &points));
+                assert_eq!(actual, expected, "{len} terms, {threads} threads");
+                assert_eq!(
+                    actual.jacobian_coordinates(),
+                    serial.jacobian_coordinates(),
+                    "{len} terms, {threads} threads"
+                );
+            }
+        }
+    }
+
+    check::<EpAffine>();
+    check::<EqAffine>();
+}

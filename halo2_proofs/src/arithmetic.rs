@@ -6,7 +6,7 @@ use group::{ff::PrimeField, Group as _, GroupOpsOwned, ScalarMulOwned};
 use maybe_rayon::prelude::*;
 pub use pasta_curves::arithmetic::*;
 
-use crate::multicore::{self, TheBestReduce};
+use crate::multicore;
 
 /// This represents an element of a group with basic operations that can be
 /// performed. This allows an FFT implementation (for example) to operate
@@ -227,17 +227,18 @@ pub fn best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
         vec![BoothBuckets::new(c); booth_window_count(&coeffs, c)];
     let num_threads = multicore::current_num_threads();
     if should_parallelize_multiexp(coeffs.len(), num_threads) {
-        multi_buckets
+        let windows = multi_buckets
             .par_iter_mut()
             .enumerate()
+            .map(|(i, buckets)| buckets.sum(&coeffs, bases, i))
+            .collect::<Vec<_>>();
+        windows
+            .into_iter()
             .rev()
-            .map(|(i, buckets)| {
-                let mut acc = buckets.sum(&coeffs, bases, i);
-                (0..c * i).for_each(|_| acc = acc.double());
-                acc
+            .fold(C::Curve::identity(), |mut sum, bucket| {
+                (0..c).for_each(|_| sum = sum.double());
+                sum + bucket
             })
-            .the_best_reduce(C::Curve::identity, |a, b| a + b)
-            .expect("multi_buckets always contains at least 1 bucket")
     } else {
         multi_buckets
             .iter_mut()
@@ -253,8 +254,7 @@ pub fn best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
 }
 
 fn should_parallelize_multiexp(num_coeffs: usize, num_threads: usize) -> bool {
-    // The parallel algorithm shifts each window result independently. With a
-    // single worker, this only adds doublings compared to serial evaluation.
+    // A single worker gains nothing from distributing independent windows.
     num_threads > 1 && num_coeffs > num_threads
 }
 
