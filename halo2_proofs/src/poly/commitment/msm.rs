@@ -13,6 +13,7 @@ struct CanonicalFieldKey<F: PrimeField> {
     repr: F::Repr,
 }
 
+#[cfg(any(test, feature = "batch", feature = "unstable-verifier-fingerprint"))]
 impl<F: PrimeField> CanonicalFieldKey<F> {
     fn new(value: F) -> Self {
         Self {
@@ -361,7 +362,7 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
                 let xy = point.coordinates().unwrap();
                 (CanonicalFieldKey::new(*xy.x()), (*scalar, *xy.y()))
             })
-            .collect();
+            .collect::<Vec<ArbitraryTerm<C>>>();
         if let Some((known, scalars)) = &self.known {
             other.extend(
                 known

@@ -86,7 +86,7 @@ fn append_only_msms_match_naive_sums_and_bound_storage() {
             assert_eq!(batched.other.len(), count * 24);
             assert_eq!(incremental.clone().eval_point(), expected);
             assert_eq!(batched.clone().eval_point(), expected);
-            // Exercise both sources and destinations containing buffered terms.
+            // Exercise both borrowed and owned additions with existing arbitrary terms.
             let mut nested = params.empty_msm();
             nested.add_msm_batch(batched.clone());
             let mut borrowed = params.empty_msm();
