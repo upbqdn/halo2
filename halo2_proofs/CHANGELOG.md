@@ -13,8 +13,8 @@ and this project adheres to Rust's notion of
   Witness-bearing prover MSMs retain the existing implementation.
 - Verification batches multi-opening denominators into one inversion and avoids
   redundant IPA coefficient and MSM allocations. Batch verification applies
-  random weights during coefficient generation and coalesces commitment terms
-  once before the final MSM.
+  random weights during coefficient generation and passes repeated commitment
+  terms to the final MSM instead of coalescing them per proof.
 - Commitments to public instance columns use a table of multiples of the
   Lagrange bases, evaluated in lockstep across columns: across all proofs in
   batch verification, and across the circuits of one proof in `verify_proof`.
