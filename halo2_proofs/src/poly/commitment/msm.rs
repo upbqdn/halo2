@@ -4,7 +4,6 @@ use ff::{Field, PrimeField};
 use group::Group;
 
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
@@ -55,14 +54,11 @@ impl<F: PrimeField> Ord for CanonicalFieldKey<F> {
     }
 }
 
+#[cfg(feature = "unstable-verifier-fingerprint")]
 type ArbitraryTerm<C> = (
     CanonicalFieldKey<<C as CurveAffine>::Base>,
     (<C as CurveAffine>::ScalarExt, <C as CurveAffine>::Base),
 );
-type OtherTerms<C> = BTreeMap<
-    CanonicalFieldKey<<C as CurveAffine>::Base>,
-    (<C as CurveAffine>::ScalarExt, <C as CurveAffine>::Base),
->;
 /// VK commitment points indexed once per batch; duplicate and negated points
 /// share an x-coordinate, retaining the first point's orientation.
 #[derive(Debug)]
@@ -96,6 +92,7 @@ impl<C: CurveAffine> KnownTerms<C> {
     }
 }
 
+#[cfg(feature = "unstable-verifier-fingerprint")]
 fn canonicalize_other<C: CurveAffine>(terms: &mut Vec<ArbitraryTerm<C>>) {
     // Stable sorting preserves the first encountered orientation. Coalesce
     // in place, negating scalars when equal x coordinates have opposite y.
@@ -121,10 +118,8 @@ pub struct MSM<'a, C: CurveAffine> {
     g_scalars: Option<Vec<C::Scalar>>,
     w_scalar: Option<C::Scalar>,
     u_scalar: Option<C::Scalar>,
-    // Cached x-coordinate -> (scalar, y-coordinate).
-    other: OtherTerms<C>,
-    // Batch reductions buffer arbitrary terms for one final sort/coalesce.
-    batched_other: Vec<ArbitraryTerm<C>>,
+    // Arbitrary bases are kept in insertion order; the MSM backend handles repeated bases.
+    other: Vec<(C::Scalar, C)>,
     // Coefficients of VK points removed from `other` before batch reduction.
     #[allow(clippy::type_complexity)]
     known: Option<(Arc<KnownTerms<C>>, Vec<C::Scalar>)>,
@@ -136,7 +131,7 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
         let g_scalars = None;
         let w_scalar = None;
         let u_scalar = None;
-        let other = BTreeMap::new();
+        let other = Vec::new();
 
         MSM {
             params,
@@ -144,23 +139,16 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
             w_scalar,
             u_scalar,
             other,
-            batched_other: Vec::new(),
             known: None,
         }
     }
 
     /// Add another multiexp into this one
     pub fn add_msm(&mut self, other: &Self) {
-        for (x, (scalar, y)) in other
-            .other
-            .iter()
-            .chain(other.batched_other.iter().map(|(x, v)| (x, v)))
-        {
-            self.add_other_key(*x, *scalar, *y);
-        }
+        self.other.extend_from_slice(&other.other);
         if let Some((known, scalars)) = &other.known {
             for ((x, y), scalar) in known.points.iter().zip(scalars) {
-                self.add_other_key(*x, *scalar, *y);
+                self.append_term(*scalar, C::from_xy(x.value, *y).unwrap());
             }
         }
 
@@ -177,21 +165,7 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
         }
     }
 
-    fn add_other_key(&mut self, x: CanonicalFieldKey<C::Base>, scalar: C::Scalar, y: C::Base) {
-        self.other
-            .entry(x)
-            .and_modify(|(our_scalar, our_y)| {
-                if *our_y == y {
-                    *our_scalar += scalar;
-                } else {
-                    assert!(*our_y == -y);
-                    *our_scalar -= scalar;
-                }
-            })
-            .or_insert((scalar, y));
-    }
-
-    /// Moves an MSM into the batch without repeatedly coalescing arbitrary terms.
+    /// Moves an MSM into the batch without coalescing arbitrary terms.
     #[cfg(any(test, feature = "batch"))]
     pub(crate) fn add_msm_batch(&mut self, other: Self) {
         let Self {
@@ -200,13 +174,9 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
             w_scalar,
             u_scalar,
             other,
-            batched_other,
             known,
         } = other;
-        self.batched_other
-            .reserve(other.len().saturating_add(batched_other.len()));
-        self.batched_other.extend(other);
-        self.batched_other.extend(batched_other);
+        self.other.extend(other);
         if let Some((known, scalars)) = known {
             if let Some((our_known, our_scalars)) = &mut self.known {
                 assert!(Arc::ptr_eq(our_known, &known));
@@ -233,30 +203,28 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
     pub(crate) fn extract_known(&mut self, known: &Arc<KnownTerms<C>>) {
         debug_assert!(self.known.is_none());
         let mut scalars = vec![C::Scalar::ZERO; known.points.len()];
-        let mut extract = |x: &CanonicalFieldKey<C::Base>, scalar: C::Scalar, y: C::Base| {
-            if let Some(index) = known.find(x) {
-                if known.points[index].1 == y {
+        self.other.retain(|(scalar, point)| {
+            let xy = point.coordinates().unwrap();
+            let x = CanonicalFieldKey::new(*xy.x());
+            if let Some(index) = known.find(&x) {
+                if known.points[index].1 == *xy.y() {
                     scalars[index] += scalar;
                 } else {
-                    assert_eq!(known.points[index].1, -y);
+                    assert_eq!(known.points[index].1, -*xy.y());
                     scalars[index] -= scalar;
                 }
                 false
             } else {
                 true
             }
-        };
-        self.other.retain(|x, (scalar, y)| extract(x, *scalar, *y));
-        self.batched_other
-            .retain(|(x, (scalar, y))| extract(x, *scalar, *y));
+        });
         self.known = Some((Arc::clone(known), scalars));
     }
 
     /// Add arbitrary term (the scalar and the point)
     pub fn append_term(&mut self, scalar: C::Scalar, point: C) {
         if !bool::from(point.is_identity()) {
-            let xy = point.coordinates().unwrap();
-            self.add_other_key(CanonicalFieldKey::new(*xy.x()), scalar, *xy.y());
+            self.other.push((scalar, point));
         }
     }
 
@@ -315,10 +283,7 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
             }
         }
 
-        for other in self.other.values_mut() {
-            other.0 *= factor;
-        }
-        for (_, (scalar, _)) in &mut self.batched_other {
+        for (scalar, _) in &mut self.other {
             *scalar *= factor;
         }
         if let Some((_, scalars)) = &mut self.known {
@@ -341,38 +306,20 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
         if let Some((known, known_scalars)) = self.known.take() {
             for ((x, y), scalar) in known.points.iter().zip(known_scalars) {
                 if !bool::from(scalar.is_zero()) {
-                    self.batched_other.push((*x, (scalar, *y)));
+                    self.other.push((scalar, C::from_xy(x.value, *y).unwrap()));
                 }
             }
-            // Sorting small batches keeps the existing fast path; large
-            // batches leave proof-specific terms in input order.
-            if self.batched_other.len().saturating_add(self.other.len()) <= 2048 {
-                self.batched_other
-                    .extend(self.other.iter().map(|(x, v)| (*x, *v)));
-                self.other.clear();
-                self.batched_other.sort_by_key(|(x, _)| *x);
-            }
-        } else if !self.batched_other.is_empty() {
-            self.batched_other
-                .extend(self.other.iter().map(|(x, v)| (*x, *v)));
-            self.other.clear();
-            canonicalize_other::<C>(&mut self.batched_other);
         }
         let len = self.g_scalars.as_deref().map(<[_]>::len).unwrap_or(0)
             + self.w_scalar.map(|_| 1).unwrap_or(0)
             + self.u_scalar.map(|_| 1).unwrap_or(0)
-            + self.other.len()
-            + self.batched_other.len();
+            + self.other.len();
         let mut scalars: Vec<C::Scalar> = Vec::with_capacity(len);
         let mut bases: Vec<C> = Vec::with_capacity(len);
 
-        for (x, (scalar, y)) in self
-            .other
-            .iter()
-            .chain(self.batched_other.iter().map(|(x, v)| (x, v)))
-        {
-            scalars.push(*scalar);
-            bases.push(C::from_xy(x.value, *y).unwrap());
+        for (scalar, point) in self.other {
+            scalars.push(scalar);
+            bases.push(point);
         }
 
         if let Some(w_scalar) = self.w_scalar {
@@ -395,8 +342,8 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
         best_multiexp_public(&scalars, &bases)
     }
 
-    /// Exposes the same terms evaluated by [`Self::eval`], with buffered batch
-    /// terms coalesced identically. Copies are confined to this dev-only path.
+    /// Exposes the same terms evaluated by [`Self::eval`], coalesced for this
+    /// dev-only fingerprint. Copies are confined to this path.
     #[cfg(feature = "unstable-verifier-fingerprint")]
     #[allow(clippy::type_complexity)]
     pub(crate) fn fingerprint_terms(
@@ -407,7 +354,14 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
         Option<C::Scalar>,
         Vec<(C::Scalar, C::Base, C::Base)>,
     ) {
-        let mut other = self.batched_other.clone();
+        let mut other = self
+            .other
+            .iter()
+            .map(|(scalar, point)| {
+                let xy = point.coordinates().unwrap();
+                (CanonicalFieldKey::new(*xy.x()), (*scalar, *xy.y()))
+            })
+            .collect();
         if let Some((known, scalars)) = &self.known {
             other.extend(
                 known
@@ -417,7 +371,6 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
                     .map(|((x, y), scalar)| (*x, (*scalar, *y))),
             );
         }
-        other.extend(self.other.iter().map(|(x, v)| (*x, *v)));
         canonicalize_other::<C>(&mut other);
         let other = other
             .into_iter()

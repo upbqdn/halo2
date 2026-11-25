@@ -30,7 +30,7 @@ fn cached_keys_preserve_pasta_order() {
 }
 
 #[test]
-fn buffered_owned_msms_match_naive_sums() {
+fn append_only_msms_match_naive_sums_and_bound_storage() {
     fn check<C: CurveAffine>() {
         let params = Params::<C>::new(3);
         let mut rng = UnwrapErr(SysRng);
@@ -52,12 +52,21 @@ fn buffered_owned_msms_match_naive_sums() {
                 msm.add_to_w_scalar(C::Scalar::ONE);
                 msm.add_to_u_scalar(-C::Scalar::ONE);
                 expected += params.w - params.u;
+                let random_point = loop {
+                    let point = (params.g[0] * C::Scalar::random(&mut rng)).to_affine_vartime();
+                    if !bool::from(point.is_identity()) {
+                        break point;
+                    }
+                };
                 for point in [
                     C::identity(),
                     params.g[1],
                     params.g[1],
                     -params.g[1],
                     params.g[2],
+                    random_point,
+                    -random_point,
+                    C::identity(),
                 ] {
                     for scalar in [
                         C::Scalar::ZERO,
@@ -69,9 +78,14 @@ fn buffered_owned_msms_match_naive_sums() {
                         expected += point * scalar;
                     }
                 }
+                assert_eq!(msm.other.len(), 24);
                 incremental.add_msm(&msm);
                 batched.add_msm_batch(msm);
             }
+            assert_eq!(incremental.other.len(), count * 24);
+            assert_eq!(batched.other.len(), count * 24);
+            assert_eq!(incremental.clone().eval_point(), expected);
+            assert_eq!(batched.clone().eval_point(), expected);
             // Exercise both sources and destinations containing buffered terms.
             let mut nested = params.empty_msm();
             nested.add_msm_batch(batched.clone());
@@ -133,10 +147,13 @@ fn known_terms_match_canonical_batch_for_duplicate_and_negated_bases() {
                     proof.scale(C::Scalar::from(3));
                     let mut extracted = proof.clone();
                     extracted.extract_known(&known);
-                    assert_eq!(extracted.other.len(), 1);
+                    assert_eq!(extracted.other.len(), 2);
                     plain.add_msm_batch(proof);
                     indexed.add_msm_batch(extracted);
                 }
+                assert_eq!(plain.other.len(), count * 5);
+                assert_eq!(indexed.other.len(), count * 2);
+                assert_eq!(indexed.known.as_ref().unwrap().1.len(), known.points.len());
                 assert_eq!(plain.clone().eval_point(), indexed.clone().eval_point());
                 assert_eq!(plain.eval(), indexed.eval());
             }
