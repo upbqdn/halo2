@@ -280,13 +280,38 @@ fn batched_decodings_match_individual_decodings_and_skip_partial_points() {
 }
 
 #[test]
-fn only_successful_batches_install_layouts_and_clones_share_them() {
+fn later_proofs_in_one_batch_use_the_published_layout() {
+    let params = Params::<C>::new(4);
+    let circuit = TestCircuit(Value::unknown());
+    let vk = keygen_vk(&params, &circuit).unwrap();
+    let pk = keygen_pk(&params, vk.clone(), &circuit).unwrap();
+    let proof = make_proof(&params, &pk, 1);
+    let mut batch = BatchVerifier::new();
+    for _ in 0..3 {
+        batch.add_proof(instances(1, 7), proof.clone());
+    }
+    #[cfg(feature = "multicore")]
+    let result = maybe_rayon::ThreadPoolBuilder::new()
+        .num_threads(1)
+        .build()
+        .unwrap()
+        .install(|| batch.finalize(&params, &vk));
+    #[cfg(not(feature = "multicore"))]
+    let result = batch.finalize(&params, &vk);
+    assert!(result);
+    assert_eq!(vk.proof_point_layouts().cache_hits(), 2);
+    assert!(vk.proof_point_layouts().get(1).is_some());
+}
+
+#[test]
+fn parsed_layouts_survive_failed_batches_and_clones_share_them() {
     let params = Params::<C>::new(4);
     let circuit = TestCircuit(Value::unknown());
     let vk = keygen_vk(&params, &circuit).unwrap();
     let pk = keygen_pk(&params, vk.clone(), &circuit).unwrap();
     let one = make_proof(&params, &pk, 1);
     let two = make_proof(&params, &pk, 2);
+    let three = make_proof(&params, &pk, 3);
 
     // This proof parses completely, but its changed public input fails the MSM.
     let wrong_values = [F::from(8)];
@@ -304,27 +329,40 @@ fn only_successful_batches_install_layouts_and_clones_share_them() {
     let mut invalid = BatchVerifier::new();
     invalid.add_proof(instances(1, 8), one.clone());
     assert!(!invalid.finalize(&params, &vk));
-    assert!(vk.proof_point_layouts().get(1).is_none());
+    assert!(vk.proof_point_layouts().get(1).is_some());
 
-    // Even the valid member of a failing batch must not publish a layout.
+    // A failed final MSM still leaves both fully parsed layouts usable.
     let mut mixed = BatchVerifier::new();
     mixed.add_proof(instances(1, 7), one.clone());
     mixed.add_proof(instances(2, 8), two.clone());
     assert!(!mixed.finalize(&params, &vk));
-    assert!(vk.proof_point_layouts().get(1).is_none());
-    assert!(vk.proof_point_layouts().get(2).is_none());
+    assert!(vk.proof_point_layouts().get(1).is_some());
+    assert!(vk.proof_point_layouts().get(2).is_some());
 
     let mut truncated = BatchVerifier::new();
-    truncated.add_proof(instances(1, 7), one[..one.len() - 1].to_vec());
+    truncated.add_proof(instances(3, 7), three[..three.len() - 1].to_vec());
     assert!(!truncated.finalize(&params, &vk));
-    assert!(vk.proof_point_layouts().get(1).is_none());
+    assert!(vk.proof_point_layouts().get(3).is_none());
+    let mut malformed = three.clone();
+    malformed[..32].fill(255);
+    let mut invalid_point = BatchVerifier::new();
+    invalid_point.add_proof(instances(3, 7), malformed);
+    assert!(!invalid_point.finalize(&params, &vk));
+    assert!(vk.proof_point_layouts().get(3).is_none());
+
+    // Trailing bytes were always ignored by the verifier.
+    let mut extra = one.clone();
+    extra.extend_from_slice(&[255; 7]);
+    let mut trailing = BatchVerifier::new();
+    trailing.add_proof(instances(1, 7), extra.clone());
+    assert!(trailing.finalize(&params, &vk));
 
     let clone = vk.clone();
     let pinned = format!("{:?}", vk.pinned());
-    let mut cold = BatchVerifier::new();
-    cold.add_proof(instances(1, 7), one.clone());
-    cold.add_proof(instances(2, 7), two.clone());
-    assert!(cold.finalize(&params, &vk));
+    let mut shared = BatchVerifier::new();
+    shared.add_proof(instances(1, 7), one.clone());
+    shared.add_proof(instances(2, 7), two.clone());
+    assert!(shared.finalize(&params, &vk));
     for circuits in [1, 2] {
         let ranges = vk.proof_point_layouts().get(circuits).unwrap();
         assert!(ranges.len() <= crate::MAX_CACHED_PROOF_POINT_RUNS);
@@ -368,6 +406,7 @@ fn only_successful_batches_install_layouts_and_clones_share_them() {
     for end in 0..=one.len() {
         compare(&one[..end]);
     }
+    compare(&extra);
     for range in ranges.iter() {
         let mut malformed = one.clone();
         malformed[range.start..range.start + 32].fill(255);

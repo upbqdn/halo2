@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use super::{verify_proof_with_instance_commitments, InstanceCommitments, VerificationStrategy};
 use crate::{
-    plonk::{Error, ProofPointLayouts, VerifyingKey},
+    plonk::{Error, VerifyingKey},
     poly::commitment::{Guard, KnownTerms, Params, MSM},
     transcript::{EncodedChallenge, PrefetchedBlake2bRead},
 };
@@ -185,9 +185,8 @@ where
             }
         };
 
-        // Parsing success alone does not establish proof validity. Keep candidates
-        // bounded and private until the batch's final MSM check succeeds.
-        let learned_layouts = ProofPointLayouts::default();
+        // Parsing a complete proof fixes its VK/circuit-count layout: the verifier
+        // chooses every read offset, and an incorrect prefetch only falls back.
         let final_msm = self
             .items
             .into_par_iter()
@@ -204,7 +203,8 @@ where
                 };
                 let strategy = BatchStrategy::new(params, rho);
                 let circuits = item.instances.len();
-                let mut transcript = match vk.proof_point_layouts().get(circuits) {
+                let layouts = vk.proof_point_layouts();
+                let mut transcript = match layouts.get(circuits) {
                     Some(ranges) => PrefetchedBlake2bRead::with_prefetched(
                         &item.proof,
                         prefetch_points(&item.proof, &ranges),
@@ -223,7 +223,7 @@ where
                 }
                 if result.is_ok() {
                     if let Some(ranges) = transcript.into_recorded() {
-                        learned_layouts.insert(circuits, ranges);
+                        layouts.insert(circuits, ranges);
                     }
                 }
                 result.map_err(|e| {
@@ -236,10 +236,6 @@ where
                 |acc, res| res.map(|proof_msm| accumulate_msm(acc, proof_msm)),
             );
 
-        let valid = final_msm.is_ok_and(|msm| msm.eval());
-        if valid {
-            learned_layouts.install(vk.proof_point_layouts());
-        }
-        valid
+        final_msm.is_ok_and(|msm| msm.eval())
     }
 }

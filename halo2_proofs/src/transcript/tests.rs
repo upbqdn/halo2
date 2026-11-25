@@ -149,20 +149,20 @@ fn recording_and_shape_caches_remain_bounded() {
     let layouts = crate::plonk::ProofPointLayouts::default();
     layouts.insert(0, vec![0..32]);
     let in_flight = layouts.get(0).unwrap();
-    layouts.insert(0, vec![32..64]);
+    std::thread::scope(|scope| {
+        for _ in 0..16 {
+            let layouts = &layouts;
+            scope.spawn(move || layouts.insert(0, vec![32..64]));
+        }
+    });
     assert!(std::sync::Arc::ptr_eq(&in_flight, &layouts.get(0).unwrap()));
-    for circuits in 1..=256 {
+    for circuits in 1..256 {
         layouts.insert(circuits, vec![32..64]);
     }
+    assert!(layouts.get(0).is_some());
+    layouts.insert(256, vec![32..64]);
     assert!(layouts.get(0).is_none());
     assert_eq!(&*in_flight, &[0..32]);
     layouts.insert(300, (0..=limit).map(|i| i * 32..i * 32 + 32).collect());
     assert!(layouts.get(300).is_none());
-
-    let installed = crate::plonk::ProofPointLayouts::default();
-    layouts.install(&installed);
-    assert!(installed.get(0).is_none());
-    for circuits in 1..=256 {
-        assert_eq!(&*installed.get(circuits).unwrap(), &[32..64]);
-    }
 }

@@ -385,13 +385,14 @@ type ChallengeX<F> = ChallengeScalar<F, X>;
 
 /// Point runs indexed by circuit-instance count for this verifying key.
 ///
-/// The verifier's sequence of point and scalar reads depends only on the key
-/// and the circuit-instance count. Only a successfully verified batch installs
-/// its recorded layouts. A missing or mismatched layout falls back to ordinary
-/// decoding at every offset that was not prefetched.
+/// The verifier fixes every read offset for a given key and circuit count.
+/// A missing or mismatched layout falls back to ordinary point decoding.
 #[cfg(feature = "batch")]
 #[derive(Debug, Default)]
-pub(crate) struct ProofPointLayouts(std::sync::Mutex<ProofPointLayoutCache>);
+pub(crate) struct ProofPointLayouts(
+    std::sync::Mutex<ProofPointLayoutCache>,
+    #[cfg(test)] std::sync::atomic::AtomicUsize,
+);
 
 /// Fixed slots replaced in insertion order, so early shapes cannot pin the cache.
 #[cfg(feature = "batch")]
@@ -435,24 +436,28 @@ impl ProofPointLayouts {
             .0
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        layouts
+        let result = layouts
             .layouts
             .iter()
             .flatten()
             .find(|layout| layout.circuits == circuits)
-            .map(|layout| Arc::clone(&layout.ranges))
+            .map(|layout| Arc::clone(&layout.ranges));
+        #[cfg(test)]
+        if result.is_some() {
+            self.1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        result
+    }
+
+    #[cfg(test)]
+    pub(crate) fn cache_hits(&self) -> usize {
+        self.1.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub(crate) fn insert(&self, circuits: usize, ranges: Vec<std::ops::Range<usize>>) {
-        if ranges.len() <= crate::MAX_CACHED_PROOF_POINT_RUNS {
-            self.insert_layout(ProofPointLayout {
-                circuits,
-                ranges: ranges.into(),
-            });
+        if ranges.len() > crate::MAX_CACHED_PROOF_POINT_RUNS {
+            return;
         }
-    }
-
-    fn insert_layout(&self, layout: ProofPointLayout) {
         let mut layouts = self
             .0
             .lock()
@@ -461,23 +466,15 @@ impl ProofPointLayouts {
             .layouts
             .iter()
             .flatten()
-            .any(|existing| existing.circuits == layout.circuits)
+            .any(|layout| layout.circuits == circuits)
         {
             return;
         }
         let next = layouts.next;
-        layouts.layouts[next] = Some(layout);
+        layouts.layouts[next] = Some(ProofPointLayout {
+            circuits,
+            ranges: ranges.into(),
+        });
         layouts.next = (next + 1) % Self::MAX_SHAPES;
-    }
-
-    /// Publishes bounded candidate layouts only after the batch's final MSM check.
-    pub(crate) fn install(self, destination: &Self) {
-        let layouts = self
-            .0
-            .into_inner()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        for layout in layouts.layouts.into_iter().flatten() {
-            destination.insert_layout(layout);
-        }
     }
 }
