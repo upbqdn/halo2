@@ -1,6 +1,6 @@
 [package]
 name = "halo2_proofs"
-version = "0.4.1"
+version = "0.4.2"
 authors = [
     "Sean Bowe",
     "Ying Tong Lai",
@@ -56,8 +56,7 @@ backtrace = { workspace = true, optional = true }
 ff.workspace = true
 group.workspace = true
 indexmap.workspace = true
-# Requires a pasta_curves release containing PreparedFixedBaseSum before merging.
-pasta_curves = { workspace = true, features = ["glv"] }
+pasta_curves.workspace = true
 rand = { workspace = true, optional = true }
 rand_core.workspace = true
 tracing.workspace = true
@@ -79,7 +78,7 @@ proptest.workspace = true
 rand.workspace = true
 
 [features]
-default = ["batch", "multicore"]
+default = ["batch", "glv", "multicore"]
 multicore = ["maybe-rayon/threads", "pasta_curves/multicore"]
 dev-graph = ["plotters", "tabbycat"]
 test-dev-graph = [
@@ -91,6 +90,7 @@ test-dev-graph = [
 gadget-traces = ["backtrace"]
 sanity-checks = []
 batch = ["dep:rand"]
+glv = ["pasta_curves/glv"]
 floor-planner-v1-legacy-pdqsort = ["halo2_legacy_pdqsort"]
 
 # In-development features

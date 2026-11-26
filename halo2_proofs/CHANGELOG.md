@@ -7,14 +7,8 @@ and this project adheres to Rust's notion of
 
 ## [Unreleased]
 ### Changed
-- Verifier MSM evaluation and public instance commitments try the curve's
-  variable-time MSM hook before the generic signed-Booth implementation. Pasta's
-  GLV backend is enabled, with parallel evaluation controlled by `multicore`.
-  Witness-bearing prover MSMs retain the existing implementation.
-- Verification batches multi-opening denominators into one inversion and avoids
-  redundant IPA coefficient and MSM allocations. Batch verification applies
-  random weights during coefficient generation and passes repeated commitment
-  terms to the final MSM instead of coalescing them per proof.
+- Batch verification passes repeated commitment terms to the final MSM instead
+  of coalescing them per proof.
 - Commitments to public instance columns use a table of multiples of the
   Lagrange bases, evaluated in lockstep across columns: across all proofs in
   batch verification, and across the circuits of one proof in `verify_proof`.
@@ -33,6 +27,34 @@ and this project adheres to Rust's notion of
   only from successful batches. Verifying-key clones share at most 256 layouts
   of 32 point runs each; cold proofs retain ordinary decoding. Proof bytes,
   challenges, and malformed or truncated proof handling are unchanged.
+
+## [0.4.2] - 2026-11-26
+### Added
+- Default-enabled `glv` feature flag that enables `pasta_curves/glv` for MSM
+  optimisations.
+
+### Changed
+- Verifier MSM evaluation and public instance commitments try the curve's
+  variable-time MSM hook before the generic signed-Booth implementation.
+  Witness-bearing prover MSMs retain the existing implementation.
+- Verification batches multi-opening denominators into one inversion and avoids
+  redundant IPA coefficient and MSM allocations. Batch verification applies
+  random weights during coefficient generation and coalesces commitment terms
+  once before the final MSM.
+  - **Breaking change:** The `Unpin`, `UnwindSafe`, and `RefUnwindSafe` auto
+    trait impls for `poly::commitment::{MSM, Guard}` and `plonk::SingleVerifier`
+    now have stricter bounds on the curve's base field and its `PrimeField::Repr`,
+    due to cached field representations and buffered terms. `Guard`'s `Unpin`
+    and `UnwindSafe` impls additionally require the corresponding trait on the
+    affine curve type `C`. The `UnwindSafe` and `RefUnwindSafe` impls for
+    `poly::multiopen::VerifierQuery` also now require `RefUnwindSafe` on
+    `<C::Base as PrimeField>::Repr`.
+    Generic downstream code relying on the previous bounds may need updating.
+    The impact is considered negligible: these verification objects are normally
+    constructed and consumed without pinning or crossing a `catch_unwind`
+    boundary, and neither initialization nor ordinary verification requires
+    these traits. The concrete `pasta_curves` implementations retain all of
+    these traits, and `Send` and `Sync` are unchanged.
 
 ## [0.4.1] - 2026-10-26
 ### Changed

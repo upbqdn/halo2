@@ -868,7 +868,7 @@ checksum = "47716fe1ae67969c5e0b2ef826f32db8c3be72be325e1aa3c1951d06b5575ec5"
 
 [[package]]
 name = "halo2_poseidon"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bitvec",
  "ff",
@@ -878,7 +878,7 @@ dependencies = [
 
 [[package]]
 name = "halo2_proofs"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "assert_matches",
  "backtrace",
@@ -1187,7 +1187,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 [[package]]
 name = "pasta_curves"
 version = "0.6.4"
-source = "git+https://github.com/upbqdn/pasta_curves?rev=62f83c889634e10a6f0c34cf3e69d0e2f4e05b38#62f83c889634e10a6f0c34cf3e69d0e2f4e05b38"
+source = "git+https://github.com/upbqdn/pasta_curves?rev=a4c37598e16f92e91e23c3523106a2db22319a28#a4c37598e16f92e91e23c3523106a2db22319a28"
 dependencies = [
  "blake2b_simd",
  "ff",
