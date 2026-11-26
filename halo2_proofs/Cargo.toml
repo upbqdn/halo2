@@ -76,6 +76,8 @@ criterion.workspace = true
 gumdrop.workspace = true
 proptest.workspace = true
 rand.workspace = true
+# Fork tests exercise prepared sums even with halo2_proofs default features disabled.
+pasta_curves = { workspace = true, features = ["glv"] }
 
 [features]
 default = ["batch", "glv", "multicore"]
